@@ -23,6 +23,7 @@ import org.jitsi.impl.neomedia.rtcp.*;
 import org.jitsi.impl.neomedia.rtp.*;
 import org.jitsi.impl.neomedia.rtp.translator.*;
 import org.jitsi.impl.neomedia.transform.*;
+import org.jitsi.nlj.rtp.*;
 import org.jitsi.service.configuration.*;
 import org.jitsi.service.libjitsi.*;
 import org.jitsi.service.neomedia.*;
@@ -290,6 +291,31 @@ public class SimulcastController
     {
         return ((MediaStreamImpl)bitrateController.getVideoChannel()
                         .getStream()).getDiagnosticContext();
+    }
+
+    public boolean accept(VideoRtpPacket pkt)
+    {
+        int targetIndex = bitstreamController.getTargetIndex(),
+                currentIndex = bitstreamController.getCurrentIndex();
+
+        // If we're suspended, we won't forward anything
+        if (targetIndex == SUSPENDED_INDEX)
+        {
+            // Update the bitstreamController if it hasn't suspended yet
+            if (currentIndex != SUSPENDED_INDEX)
+            {
+                bitstreamController.suspend();
+            }
+            return false;
+        }
+        // At this point we know we *want* to be forwarding something
+
+        org.jitsi_modified.impl.neomedia.rtp.FrameDesc sourceFrameDesc = pkt.getFrameDesc();
+        if (sourceFrameDesc == null)
+        {
+            return false;
+        }
+        return true;
     }
 
     /**

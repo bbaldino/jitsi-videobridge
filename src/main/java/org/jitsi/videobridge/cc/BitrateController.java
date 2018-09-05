@@ -18,6 +18,7 @@ package org.jitsi.videobridge.cc;
 import org.jitsi.impl.neomedia.*;
 import org.jitsi.impl.neomedia.rtp.*;
 import org.jitsi.impl.neomedia.transform.*;
+import org.jitsi.nlj.rtp.*;
 import org.jitsi.service.configuration.*;
 import org.jitsi.service.libjitsi.*;
 import org.jitsi.service.neomedia.*;
@@ -406,6 +407,30 @@ public class BitrateController
         return simulcastController.accept(pkt);
     }
 
+    public boolean accept(VideoRtpPacket pkt)
+    {
+        long ssrc = pkt.getHeader().getSsrc();
+        if (ssrc < 0)
+        {
+            System.out.println("bitrate controller not accepting packet: bad ssrc");
+            return false;
+        }
+
+        SimulcastController simulcastController
+                = ssrcToSimulcastController.get(ssrc);
+
+        if (simulcastController == null)
+        {
+            System.out.println(
+                    "BitrateController Dropping an RTP packet, because the SSRC has not " +
+                            "been signaled:" + ssrc);
+            return false;
+        }
+
+        return simulcastController.accept(pkt);
+
+    }
+
     /**
      * Computes a new bitrate allocation for every endpoint in the conference,
      * and updates the state of this instance so that bitrate allocation is
@@ -561,6 +586,11 @@ public class BitrateController
                             // controller.
                             for (RTPEncodingDesc rtpEncoding : rtpEncodings)
                             {
+                                System.out.println("BitrateController " + hashCode() + " adding ssrc " +
+                                        rtpEncoding.getPrimarySSRC());
+                                for (StackTraceElement ste : Thread.currentThread().getStackTrace()) {
+                                    System.out.println(ste);
+                                }
                                 ssrcToSimulcastController.put(
                                     rtpEncoding.getPrimarySSRC(), ctrl);
 
@@ -571,6 +601,10 @@ public class BitrateController
                                         rtxSsrc, ctrl);
                                 }
                             }
+                        }
+                        else
+                        {
+                            System.out.println("Track had no rtp encodings! Couldn't create simulcast controllers");
                         }
                     }
                 }

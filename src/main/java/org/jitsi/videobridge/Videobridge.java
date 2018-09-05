@@ -664,6 +664,7 @@ public class Videobridge
     {
         Jid focus = conferenceIQ.getFrom();
         Conference conference;
+        System.out.println("Received colibriConferenceIq \n" + conferenceIQ.toXML());
 
         if (!accept(focus, options))
         {
