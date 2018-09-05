@@ -305,6 +305,7 @@ public class SimulcastController
     {
         if (pkt.isInvalid())
         {
+            System.out.println("Simulcast controller not accepting packet: invalid");
             return false;
         }
 

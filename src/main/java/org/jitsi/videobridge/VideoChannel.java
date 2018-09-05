@@ -406,6 +406,9 @@ public class VideoChannel
         }
 
         boolean accept = bitrateController.accept(pkt);
+        if (!accept) {
+            System.out.println("Bitrate controller not accepting video packet");
+        }
 
         if (accept && lipSyncHack != null)
         {
