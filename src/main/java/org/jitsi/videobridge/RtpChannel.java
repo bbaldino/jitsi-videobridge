@@ -1997,6 +1997,7 @@ public class RtpChannel
                 t.close();
             }
         }
+        logger.info(transceiver.getRtpReceiver().getStats(0));
 
         return true;
     }
