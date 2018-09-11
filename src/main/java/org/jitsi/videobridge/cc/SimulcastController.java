@@ -24,6 +24,7 @@ import org.jitsi.impl.neomedia.rtp.*;
 import org.jitsi.impl.neomedia.rtp.translator.*;
 import org.jitsi.impl.neomedia.transform.*;
 import org.jitsi.nlj.rtp.*;
+import org.jitsi.nlj.util.*;
 import org.jitsi.service.configuration.*;
 import org.jitsi.service.libjitsi.*;
 import org.jitsi.service.neomedia.*;
@@ -293,10 +294,35 @@ public class SimulcastController
                         .getStream()).getDiagnosticContext();
     }
 
-    public boolean accept(VideoRtpPacket pkt)
+//    public boolean accept(VideoRtpPacket pkt)
+//    {
+//        int targetIndex = bitstreamController.getTargetIndex(),
+//                currentIndex = bitstreamController.getCurrentIndex();
+//
+//        // If we're suspended, we won't forward anything
+//        if (targetIndex == SUSPENDED_INDEX)
+//        {
+//            // Update the bitstreamController if it hasn't suspended yet
+//            if (currentIndex != SUSPENDED_INDEX)
+//            {
+//                bitstreamController.suspend();
+//            }
+//            return false;
+//        }
+//        // At this point we know we *want* to be forwarding something
+//
+//        org.jitsi_modified.impl.neomedia.rtp.FrameDesc sourceFrameDesc = pkt.getFrameDesc();
+//        if (sourceFrameDesc == null)
+//        {
+//            return false;
+//        }
+//        return true;
+//    }
+
+    public boolean accept(VideoRtpPacket packet)
     {
         int targetIndex = bitstreamController.getTargetIndex(),
-                currentIndex = bitstreamController.getCurrentIndex();
+            currentIndex = bitstreamController.getCurrentIndex();
 
         // If we're suspended, we won't forward anything
         if (targetIndex == SUSPENDED_INDEX)
@@ -310,13 +336,87 @@ public class SimulcastController
         }
         // At this point we know we *want* to be forwarding something
 
-        org.jitsi_modified.impl.neomedia.rtp.FrameDesc sourceFrameDesc = pkt.getFrameDesc();
+//        MediaStreamTrackDesc sourceTrack = weakSource.get();
+//        assert sourceTrack != null;
+        FrameDesc sourceFrameDesc = packet.getFrameDesc();
+//                sourceTrack.findFrameDesc(pkt.getSSRCAsLong(), pkt.getTimestamp());
+
         if (sourceFrameDesc == null)
         {
             return false;
         }
-        return true;
+
+        RTPEncodingDesc[] sourceEncodings = packet.getTrackEncodings(); //sourceTrack.getRTPEncodings();
+
+        if (ArrayUtils.isNullOrEmpty(sourceEncodings))
+        {
+            return false;
+        }
+
+        int sourceLayerIndex = sourceFrameDesc.getRTPEncoding().getIndex();
+
+        // At this point we know we *want* to be forwarding something, but the
+        // current layer we're forwarding is still sending, so we're not
+        // "desperate"
+        int currentBaseLayerIndex;
+        if (currentIndex == SUSPENDED_INDEX)
+        {
+            currentBaseLayerIndex = SUSPENDED_INDEX;
+        }
+        else
+        {
+            currentBaseLayerIndex
+                    = sourceEncodings[currentIndex].getBaseLayer().getIndex();
+        }
+
+        int sourceBaseLayerIndex
+                = sourceEncodings[sourceLayerIndex].getBaseLayer().getIndex();
+
+        long nowMs = System.currentTimeMillis();
+        if (sourceBaseLayerIndex == currentBaseLayerIndex)
+        {
+            if (sourceFrameDesc.isIndependent())
+            {
+                mostRecentKeyframeGroupArrivalTimeMs = nowMs;
+            }
+            // Regardless of whether a switch is pending or not, if an incoming
+            // frame belongs to the stream that is currently being forwarded,
+            // we'll accept it (if the bitstreamController lets it through)
+            return bitstreamController.accept(sourceFrameDesc, PacketExtensionsKt.toRawPacket(packet));
+        }
+
+        // At this point we know that we want to be forwarding a stream
+        // different from the one that the incoming frame belongs to, so we
+        // need to check if there is a layer switch pending and this frame
+        // brings us to (or closer to) the stream we want.
+        if (!sourceFrameDesc.isIndependent())
+        {
+            // If it's not a keyframe we can't switch to it anyway.
+
+            // XXX if we end up requesting a key frame, the request are
+            // throttled by the {@link RTCPFeedbackMessageSender}, so we don't
+            // risk spamming the sender with FIRs/PLIs.
+            maybeRequestKeyFrame(nowMs);
+            return false;
+        }
+
+        int targetBaseLayerIndex
+                = sourceEncodings[targetIndex].getBaseLayer().getIndex();
+
+        if (shouldSwitchToBaseLayer(
+                nowMs,
+                currentBaseLayerIndex,
+                sourceBaseLayerIndex,
+                targetBaseLayerIndex))
+        {
+            bitstreamController.setTL0Idx(sourceBaseLayerIndex);
+            return bitstreamController.accept(sourceFrameDesc, PacketExtensionsKt.toRawPacket(packet));
+        }
+
+        return false;
+
     }
+
 
     /**
      * Defines a packet filter that controls which packets to be written into

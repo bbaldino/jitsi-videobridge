@@ -88,35 +88,35 @@ public class AudioChannel
         transceiver.setCsrcAudioLevelListener(new AudioChannelAudioLevelListener(this));
     }
 
-    /**
-     * {@inheritDoc}
-     */
-    @Override
-    protected void removeStreamListeners()
-    {
-        super.removeStreamListeners();
-
-        try
-        {
-            MediaStream stream = getStream();
-
-            if (stream instanceof AudioMediaStream)
-            {
-                ((AudioMediaStream) stream).setCsrcAudioLevelListener(null);
-            }
-        }
-        catch (Throwable t)
-        {
-            if (t instanceof InterruptedException)
-            {
-                Thread.currentThread().interrupt();
-            }
-            else if (t instanceof ThreadDeath)
-            {
-                throw (ThreadDeath) t;
-            }
-        }
-    }
+//    /**
+//     * {@inheritDoc}
+//     */
+//    @Override
+//    protected void removeStreamListeners()
+//    {
+//        super.removeStreamListeners();
+//
+//        try
+//        {
+//            MediaStream stream = getStream();
+//
+//            if (stream instanceof AudioMediaStream)
+//            {
+//                ((AudioMediaStream) stream).setCsrcAudioLevelListener(null);
+//            }
+//        }
+//        catch (Throwable t)
+//        {
+//            if (t instanceof InterruptedException)
+//            {
+//                Thread.currentThread().interrupt();
+//            }
+//            else if (t instanceof ThreadDeath)
+//            {
+//                throw (ThreadDeath) t;
+//            }
+//        }
+//    }
 
     /**
      * {@inheritDoc}
@@ -171,7 +171,7 @@ public class AudioChannel
      * {@inheritDoc}
      */
     @Override
-    boolean rtpTranslatorWillWrite(
+    boolean wants(
         boolean data,
         RawPacket pkt,
         RtpChannel source)
