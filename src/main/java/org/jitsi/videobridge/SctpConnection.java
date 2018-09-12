@@ -104,7 +104,7 @@ public class SctpConnection
     /**
      * The pool of <tt>Thread</tt>s which run <tt>SctpConnection</tt>s.
      */
-    private static final ExecutorService threadPool
+    protected static final ExecutorService threadPool
         = ExecutorUtils.newCachedThreadPool(
                 true,
                 SctpConnection.class.getName());
@@ -142,13 +142,13 @@ public class SctpConnection
     /**
      * Indicates if we have accepted incoming connection.
      */
-    private boolean acceptedIncomingConnection;
+    protected boolean acceptedIncomingConnection;
 
     /**
      * Indicates whether the STCP association is ready and has not been ended by
      * a subsequent state change.
      */
-    private boolean assocIsUp;
+    protected boolean assocIsUp;
 
     /**
      * Data channels mapped by SCTP stream identified(sid).
@@ -158,7 +158,7 @@ public class SctpConnection
     /**
      * Debug ID used to distinguish SCTP sockets in packet logs.
      */
-    private final int debugId;
+    protected final int debugId;
 
     /**
      * The <tt>AsyncExecutor</tt> which is to asynchronously dispatch the events
@@ -179,18 +179,18 @@ public class SctpConnection
     /**
      * Remote SCTP port.
      */
-    private final int remoteSctpPort;
+    protected final int remoteSctpPort;
 
     /**
      * <tt>SctpSocket</tt> used for SCTP transport.
      */
-    private SctpSocket sctpSocket;
+    protected SctpSocket sctpSocket;
 
     /**
      * Flag prevents from starting this connection multiple times from
      * {@link #maybeStartStream()}.
      */
-    private boolean started;
+    protected boolean started;
 
     /**
      * The object used to synchronize access to fields specific to this
@@ -438,6 +438,7 @@ public class SctpConnection
     protected void maybeStartStream()
         throws IOException
     {
+        System.out.println("BRIAN: sctpconnection maybestartstream");
         // connector
         final StreamConnector connector = getStreamConnector();
 
@@ -523,7 +524,7 @@ public class SctpConnection
      * Submits {@link #notifySctpConnectionReadyInEventDispatcher()} to
      * {@link #eventDispatcher} for asynchronous execution.
      */
-    private void notifySctpConnectionReady()
+    protected void notifySctpConnectionReady()
     {
         if (!isExpired())
         {
@@ -870,6 +871,7 @@ public class SctpConnection
         int type, int prio, long reliab, int sid, String label)
         throws IOException
     {
+        System.out.println("BRIAN: OPENING SCTP CHANNEL");
         synchronized (syncRoot)
         {
             return openChannelNotSynchronized(type, prio, reliab, sid, label);
@@ -964,7 +966,7 @@ public class SctpConnection
         }
     }
 
-    private void runOnDtlsTransport(StreamConnector connector)
+    protected void runOnDtlsTransport(StreamConnector connector)
         throws IOException
     {
         SrtpControl srtpControl
