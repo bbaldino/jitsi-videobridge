@@ -462,7 +462,7 @@ public class VideoChannel
                 newPackets.add(new PacketInfo(rtpPacket));
             }
         }
-        transceiver.sendRtp(newPackets);
+        getTransceiver().sendRtp(newPackets);
     }
 
     /**
