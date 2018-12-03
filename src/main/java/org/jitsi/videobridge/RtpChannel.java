@@ -1933,10 +1933,6 @@ public class RtpChannel
                 t.close();
             }
         }
-        Transceiver transceiver = getTransceiver();
-        if (transceiver != null) {
-            logger.info(transceiver.getStats());
-        }
 
         return true;
     }

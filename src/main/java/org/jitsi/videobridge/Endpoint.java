@@ -239,6 +239,7 @@ public class Endpoint
         {
             messageTransport.close();
         }
+        logger.info(transceiver.getStats());
     }
 
     /**
