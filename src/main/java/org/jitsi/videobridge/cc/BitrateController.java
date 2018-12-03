@@ -586,11 +586,6 @@ public class BitrateController
                             // controller.
                             for (RTPEncodingDesc rtpEncoding : rtpEncodings)
                             {
-                                System.out.println("BitrateController " + hashCode() + " adding ssrc " +
-                                        rtpEncoding.getPrimarySSRC());
-                                for (StackTraceElement ste : Thread.currentThread().getStackTrace()) {
-                                    System.out.println(ste);
-                                }
                                 ssrcToSimulcastController.put(
                                     rtpEncoding.getPrimarySSRC(), ctrl);
 
