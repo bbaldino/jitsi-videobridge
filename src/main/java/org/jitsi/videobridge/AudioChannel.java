@@ -36,13 +36,13 @@ public class AudioChannel
     /**
      * The {@link LipSyncHack} from the {@link VideoChannel}.
      */
-    private LipSyncHack associatedLipSyncHack;
+//    private LipSyncHack associatedLipSyncHack;
 
     /**
      * A boolean that indicates whether or not we've fetched the
      * {@link LipSyncHack} from the {@link VideoChannel}.
      */
-    private boolean fetchedLipSyncHack = false;
+//    private boolean fetchedLipSyncHack = false;
 
     /**
      * Initializes a new <tt>AudioChannel</tt> instance which is to have a
@@ -172,15 +172,15 @@ public class AudioChannel
 //        }
 //    }
 
-    /**
-     * {@inheritDoc}
-     */
-    @Override
-    boolean wants(
-        boolean data,
-        RawPacket pkt,
-        RtpChannel source)
-    {
+//    /**
+//     * {@inheritDoc}
+//     */
+//    @Override
+//    boolean wants(
+//        boolean data,
+//        RawPacket pkt,
+//        RtpChannel source)
+//    {
 //        if (!data)
 //        {
 //            return true;
@@ -205,7 +205,7 @@ public class AudioChannel
 //            associatedLipSyncHack.onRTPTranslatorWillWriteAudio(
 //                pkt, source);
 //        }
-
-        return true;
-    }
+//
+//        return true;
+//    }
 }

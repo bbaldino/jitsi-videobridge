@@ -183,7 +183,7 @@ public class JvbBundleConfig
 
         // Trust the send side bandwidth estimations (which enables adaptivity)
         // by default.
-        defaults.put(BitrateController.TRUST_BWE_PNAME, true_);
+//        defaults.put(BitrateController.TRUST_BWE_PNAME, true_);
 
         // Enable VP8 temporal scalability filtering by default.
         defaults.put(MediaStreamTrackFactory.ENABLE_SVC_PNAME, true_);
