@@ -438,52 +438,52 @@ public class SctpConnection
     protected void maybeStartStream()
         throws IOException
     {
-        System.out.println("BRIAN: sctpconnection maybestartstream");
-        // connector
-        final StreamConnector connector = getStreamConnector();
-
-        if (connector == null)
-            return;
-
-        synchronized (syncRoot)
-        {
-            if (started)
-                return;
-
-            threadPool.execute(
-                    new Runnable()
-                    {
-                        @Override
-                        public void run()
-                        {
-                            try
-                            {
-                                Sctp.init();
-        
-                                runOnDtlsTransport(connector);
-                            }
-                            catch (IOException e)
-                            {
-                                logger.error(e, e);
-                            }
-                            finally
-                            {
-                                try
-                                {
-                                    Sctp.finish();
-                                }
-                                catch (IOException e)
-                                {
-                                    logger.error(
-                                            "Failed to shutdown SCTP stack",
-                                            e);
-                                }
-                            }
-                        }
-                    });
-
-            started = true;
-        }
+        return;
+//        // connector
+//        final StreamConnector connector = getStreamConnector();
+//
+//        if (connector == null)
+//            return;
+//
+//        synchronized (syncRoot)
+//        {
+//            if (started)
+//                return;
+//
+//            threadPool.execute(
+//                    new Runnable()
+//                    {
+//                        @Override
+//                        public void run()
+//                        {
+//                            try
+//                            {
+//                                Sctp.init();
+//
+//                                runOnDtlsTransport(connector);
+//                            }
+//                            catch (IOException e)
+//                            {
+//                                logger.error(e, e);
+//                            }
+//                            finally
+//                            {
+//                                try
+//                                {
+//                                    Sctp.finish();
+//                                }
+//                                catch (IOException e)
+//                                {
+//                                    logger.error(
+//                                            "Failed to shutdown SCTP stack",
+//                                            e);
+//                                }
+//                            }
+//                        }
+//                    });
+//
+//            started = true;
+//        }
     }
 
     /**
