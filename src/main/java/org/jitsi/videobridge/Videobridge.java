@@ -69,7 +69,7 @@ public class Videobridge
     /**
      * The name of configuration property used to specify default processing
      * options passed as the second argument to
-     * {@link #handleColibriConferenceIQ(ColibriConferenceIQ, int)}.
+     * {@link #handleColibriConferenceIq2(ColibriConferenceIQ, int)}}.
      */
     public static final String DEFAULT_OPTIONS_PROPERTY_NAME
         = "org.jitsi.videobridge.defaultOptions";
@@ -109,7 +109,7 @@ public class Videobridge
 
     /**
      * The optional flag which specifies to
-     * {@link #handleColibriConferenceIQ(ColibriConferenceIQ, int)} that
+     * {@link #handleColibriConferenceIq2(ColibriConferenceIQ, int)} that
      * <tt>ColibriConferenceIQ</tt>s can be accessed by any peer(not only by the
      * focus that created the conference).
      */
@@ -117,7 +117,7 @@ public class Videobridge
 
     /**
      * The optional flag which specifies to
-     * {@link #handleColibriConferenceIQ(ColibriConferenceIQ, int)} that
+     * {@link #handleColibriConferenceIq2(ColibriConferenceIQ, int)} that
      * <tt>ColibriConferenceIQ</tt>s without an associated conference focus are
      * allowed.
      */
@@ -196,7 +196,7 @@ public class Videobridge
 
     /**
      * Default options passed as second argument to
-     * {@link #handleColibriConferenceIQ(ColibriConferenceIQ, int)}
+     * {@link #handleColibriConferenceIq2(ColibriConferenceIQ, int)}
      */
     private int defaultProcessingOptions;
 
@@ -687,7 +687,6 @@ public class Videobridge
         else
         {
             conference = colibriShim.getConference(conferenceId);
-            //TODO: should we validate the underying conference object got created as well?
             if (conference == null)
             {
                 return IQUtils.createError(
@@ -934,6 +933,12 @@ public class Videobridge
         public IqProcessingException(XMPPError.Condition condition, String errorMessage) {
             this.condition = condition;
             this.errorMessage = errorMessage;
+        }
+
+        @Override
+        public String toString()
+        {
+            return condition.toString() + " " + errorMessage;
         }
     }
 
