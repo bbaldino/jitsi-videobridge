@@ -25,6 +25,7 @@ import org.eclipse.jetty.server.*;
 import org.ice4j.ice.harvest.*;
 import org.jitsi.service.neomedia.*;
 import org.jitsi.videobridge.*;
+import org.jitsi.videobridge.transport.*;
 import org.jitsi.videobridge.xmpp.*;
 
 import net.java.sip.communicator.impl.protocol.jabber.extensions.colibri.*;
@@ -166,7 +167,7 @@ public class Health
             throw new Exception("Address discovery through STUN failed");
         }
 
-        if (!IceUdpTransportManager.healthy)
+        if (!Harvesters.healthy)
         {
             throw new Exception("Failed to bind single-port");
         }

@@ -35,6 +35,7 @@ import org.jitsi.service.neomedia.format.*;
 import org.jitsi.util.Logger;
 import org.jitsi.util.*;
 import org.jitsi.videobridge.pubsub.*;
+import org.jitsi.videobridge.transport.*;
 import org.jitsi.videobridge.xmpp.*;
 import org.jitsi.xmpp.util.*;
 import org.jivesoftware.smack.packet.*;
@@ -1553,7 +1554,7 @@ public class Videobridge
         ConfigurationService cfg)
     {
         // Shut down harvesters.
-        IceUdpTransportManager.closeStaticConfiguration(cfg);
+        Harvesters.closeStaticConfiguration(cfg);
 
         // Clear all system properties that were ice4j properties. This is done
         // to deal with any properties that are conditionally set during
