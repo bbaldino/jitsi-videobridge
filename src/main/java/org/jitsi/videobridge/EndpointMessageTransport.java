@@ -37,7 +37,7 @@ import static org.jitsi.videobridge.EndpointMessageBuilder.*;
  */
 class EndpointMessageTransport
     extends AbstractEndpointMessageTransport
-    implements WebRtcDataStream.DataCallback, DataChannelStack.DataChannelMessageListener
+    implements DataChannelStack.DataChannelMessageListener
 {
 
     /**
@@ -77,51 +77,7 @@ class EndpointMessageTransport
      */
     private boolean webSocketLastActive = false;
 
-    /**
-     * SCTP connection bound to this endpoint.
-     */
-    private WeakReference<SctpConnection> sctpConnection
-        = new WeakReference<>(null);
-
     private WeakReference<DataChannel> dataChannel = new WeakReference<>(null);
-
-    /**
-     * The listener which will be added to {@link SctpConnection}s associated
-     * with this endpoint, which will be notified when {@link SctpConnection}s
-     * become ready.
-     *
-     * Note that we just want to make sure that the initial messages (e.g.
-     * a dominant speaker notification) are sent. Because of this we only add
-     * listeners to {@link SctpConnection}s which are not yet ready, and we
-     * remove the listener after an {@link SctpConnection} becomes ready.
-     */
-    private final WebRtcDataStreamListener webRtcDataStreamListener
-        = new WebRtcDataStreamListener()
-    {
-        @Override
-        public void onSctpConnectionReady(
-            SctpConnection source)
-        {
-            if (source != null)
-            {
-                if (source.equals(getSctpConnection()))
-                {
-                    try
-                    {
-                        WebRtcDataStream dataStream
-                            = source.getDefaultDataStream();
-                        dataStream.setDataCallback(EndpointMessageTransport.this);
-                        notifyTransportChannelConnected();
-                    }
-                    catch (IOException e)
-                    {
-                        logger.error("Could not get the default data stream.", e);
-                    }
-                }
-                source.removeChannelListener(this);
-            }
-        }
-    };
 
     /**
      * Initializes a new {@link EndpointMessageTransport} instance.
@@ -191,11 +147,7 @@ class EndpointMessageTransport
      */
     private void sendMessage(Object dst, String message, String errorMessage)
     {
-        if (dst instanceof WebRtcDataStream)
-        {
-            sendMessage((WebRtcDataStream) dst, message, errorMessage);
-        }
-        else if (dst instanceof ColibriWebSocket)
+        if (dst instanceof ColibriWebSocket)
         {
             sendMessage((ColibriWebSocket) dst, message, errorMessage);
         }
@@ -206,31 +158,6 @@ class EndpointMessageTransport
         else
         {
             throw new IllegalArgumentException("unknown transport:" + dst);
-        }
-    }
-
-    /**
-     * Sends a string via a particular {@link WebRtcDataStream} instance.
-     * @param dst the {@link WebRtcDataStream} through which to send the message.
-     * @param message the message to send.
-     * @param errorMessage an error message to be logged in case of failure.
-     */
-    @Deprecated
-    private void sendMessage(
-            WebRtcDataStream dst, String message, String errorMessage)
-    {
-        try
-        {
-            dst.sendString(message);
-            endpoint.getConference().getVideobridge().getStatistics()
-                .totalDataChannelMessagesSent.incrementAndGet();
-        }
-        catch (IOException ioe)
-        {
-            logger.error(
-                "Failed to send a message over a WebRTC data channel"
-                    +   " (endpoint=" + endpoint.getID() + "): " + errorMessage,
-                ioe);
         }
     }
 
@@ -379,19 +306,6 @@ class EndpointMessageTransport
      * {@inheritDoc}
      */
     @Override
-    public void onStringData(WebRtcDataStream src, String msg)
-    {
-        webSocketLastActive = false;
-        endpoint.getConference().getVideobridge().getStatistics().
-            totalDataChannelMessagesReceived.incrementAndGet();
-
-        onMessage(src, msg);
-    }
-
-    /**
-     * {@inheritDoc}
-     */
-    @Override
     protected void sendMessage(String msg)
         throws IOException
     {
@@ -409,7 +323,7 @@ class EndpointMessageTransport
     /**
      * @return the active transport channel for this
      * {@link EndpointMessageTransport} (either the {@link #webSocket}, or
-     * the WebRTC data channel represented by a {@link WebRtcDataStream}).
+     * the WebRTC data channel represented by a {@link DataChannel}).
      * </p>
      * The "active" channel is determined based on what channels are available,
      * and which one was the last to receive data. That is, if only one channel
@@ -423,7 +337,6 @@ class EndpointMessageTransport
     private Object getActiveTransportChannel()
         throws IOException
     {
-        SctpConnection sctpConnection = getSctpConnection();
         DataChannel dataChannel = this.dataChannel.get();
         ColibriWebSocket webSocket = this.webSocket;
         String endpointId = endpoint.getID();
@@ -442,17 +355,6 @@ class EndpointMessageTransport
             {
                 System.out.println("TEMP: EMT transport is datachannel");
                 dst = dataChannel;
-            }
-            else if (sctpConnection != null && sctpConnection.isReady())
-            {
-                dst = sctpConnection.getDefaultDataStream();
-
-                if (dst == null)
-                {
-                    logger.warn(
-                        "SCTP ready, but WebRtc data channel with " + endpointId
-                            + " not opened yet.");
-                }
             }
             else
             {
@@ -597,52 +499,5 @@ class EndpointMessageTransport
             throw new Error("Overwriting a previous data channel!");
         }
 
-    }
-
-    /**
-     * @return the {@link SctpConnection} associated with this endpoint.
-     */
-    SctpConnection getSctpConnection()
-    {
-        return sctpConnection.get();
-    }
-
-    /**
-     * Sets the {@link SctpConnection} associated with this endpoint.
-     * @param sctpConnection the new {@link SctpConnection}.
-     */
-    void setSctpConnection(SctpConnection sctpConnection)
-    {
-        SctpConnection oldValue = getSctpConnection();
-
-        if (!Objects.equals(oldValue, sctpConnection))
-        {
-            if (oldValue != null && sctpConnection != null)
-            {
-                // This is not necessarily invalid, but with the current
-                // codebase it likely indicates a problem. If we start to
-                // actually use it, this warning should be removed.
-                logger.warn("Replacing an Endpoint's SctpConnection.");
-            }
-
-            this.sctpConnection = new WeakReference<>(sctpConnection);
-
-            if (sctpConnection != null)
-            {
-                if (sctpConnection.isReady())
-                {
-                    notifyTransportChannelConnected();
-                }
-                else
-                {
-                    sctpConnection.addChannelListener(webRtcDataStreamListener);
-                }
-            }
-
-            if (oldValue != null)
-            {
-                oldValue.removeChannelListener(webRtcDataStreamListener);
-            }
-        }
     }
 }
