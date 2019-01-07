@@ -375,6 +375,7 @@ public class IceUdpTransportManager
     /**
      * The <tt>DtlsControl</tt> that this <tt>TransportManager</tt> uses.
      */
+    @Deprecated
     private final DtlsControlImpl dtlsControl;
 
     /**
@@ -882,7 +883,7 @@ public class IceUdpTransportManager
     /**
      * {@inheritDoc}
      *
-     * Keeps {@link #sctpConnection} and {@link #channelForDtls} up to date.
+//     * Keeps {@link #sctpConnection} and {@link #channelForDtls} up to date.
      */
     @Override
     public boolean close(Channel channel)
@@ -1510,72 +1511,73 @@ public class IceUdpTransportManager
     /**
      * {@inheritDoc}
      */
+    @Deprecated
     @Override
     public SrtpControl getSrtpControl(Channel channel)
     {
         return dtlsControl;
     }
 
-    /**
-     * {@inheritDoc}
-     * </p>
-     * Note, that we don't cache any instances that we create here, so this
-     * method should be called no more than once for each channel!
-     */
-    @Override
-    public StreamConnector getStreamConnector(Channel channel)
-    {
-        if (!getChannels().contains(channel))
-        {
-            return null;
-        }
-
-        MultiplexingDatagramSocket rtpSocket
-            =  iceStream.getComponent(Component.RTP).getSocket();
-
-        MultiplexingDatagramSocket rtcpSocket;
-        if (numComponents > 1 && !rtcpmux)
-        {
-            rtcpSocket = iceStream.getComponent(Component.RTCP).getSocket();
-        }
-        else
-        {
-            rtcpSocket = rtpSocket;
-        }
-
-        if (rtpSocket == null || rtcpSocket == null)
-        {
-            throw new IllegalStateException("No sockets from ice4j.");
-        }
-
-
-        if (! (channel instanceof RtpChannel))
-        {
-            return null;
-        }
-
-        RtpChannel rtpChannel = (RtpChannel) channel;
-        DatagramSocket channelRtpSocket, channelRtcpSocket;
-        try
-        {
-            channelRtpSocket
-                = rtpSocket.getSocket(
-                    rtpChannel.getDatagramFilter(false /* RTP */));
-            channelRtcpSocket
-                = rtcpSocket.getSocket(
-                    rtpChannel.getDatagramFilter(true /* RTCP */));
-        }
-        catch (SocketException se)
-        {
-            throw new RuntimeException(
-                "Failed to create filtered sockets.", se);
-        }
-
-        return new DefaultStreamConnector(
-            channelRtpSocket,
-            channelRtcpSocket,
-            rtcpmux);
-    }
+//    /**
+//     * {@inheritDoc}
+//     * </p>
+//     * Note, that we don't cache any instances that we create here, so this
+//     * method should be called no more than once for each channel!
+//     */
+//    @Override
+//    public StreamConnector getStreamConnector(Channel channel)
+//    {
+//        if (!getChannels().contains(channel))
+//        {
+//            return null;
+//        }
+//
+//        MultiplexingDatagramSocket rtpSocket
+//            =  iceStream.getComponent(Component.RTP).getSocket();
+//
+//        MultiplexingDatagramSocket rtcpSocket;
+//        if (numComponents > 1 && !rtcpmux)
+//        {
+//            rtcpSocket = iceStream.getComponent(Component.RTCP).getSocket();
+//        }
+//        else
+//        {
+//            rtcpSocket = rtpSocket;
+//        }
+//
+//        if (rtpSocket == null || rtcpSocket == null)
+//        {
+//            throw new IllegalStateException("No sockets from ice4j.");
+//        }
+//
+//
+//        if (! (channel instanceof RtpChannel))
+//        {
+//            return null;
+//        }
+//
+//        RtpChannel rtpChannel = (RtpChannel) channel;
+//        DatagramSocket channelRtpSocket, channelRtcpSocket;
+//        try
+//        {
+//            channelRtpSocket
+//                = rtpSocket.getSocket(
+//                    rtpChannel.getDatagramFilter(false /* RTP */));
+//            channelRtcpSocket
+//                = rtcpSocket.getSocket(
+//                    rtpChannel.getDatagramFilter(true /* RTCP */));
+//        }
+//        catch (SocketException se)
+//        {
+//            throw new RuntimeException(
+//                "Failed to create filtered sockets.", se);
+//        }
+//
+//        return new DefaultStreamConnector(
+//            channelRtpSocket,
+//            channelRtcpSocket,
+//            rtcpmux);
+//    }
 
     private MediaStreamTarget getStreamTarget()
     {
@@ -1647,6 +1649,7 @@ public class IceUdpTransportManager
      * {@inheritDoc}
      */
     @Override
+    @Deprecated
     public MediaStreamTarget getStreamTarget(Channel channel)
     {
         return getStreamTarget();
@@ -1735,12 +1738,12 @@ public class IceUdpTransportManager
         }
     }
 
-    /**
-     * Notifies all channels of this <tt>TransportManager</tt> that connectivity
-     * has been established (and they can now obtain valid values through
-     * {@link #getStreamConnector(Channel)} and
-     * {@link #getStreamTarget(Channel)}.
-     */
+//    /**
+//     * Notifies all channels of this <tt>TransportManager</tt> that connectivity
+//     * has been established (and they can now obtain valid values through
+//     * {@link #getStreamConnector(Channel)} and
+//     * {@link #getStreamTarget(Channel)}.
+//     */
 //    private void onIceConnected()
 //    {
 //        iceConnected = true;
@@ -1920,15 +1923,16 @@ public class IceUdpTransportManager
 
     private void setRtcpmux(IceUdpTransportPacketExtension transport)
     {
+        //TODO(brian): need to reimeplement this if we're going to support non-rtcpmux
         if (transport.isRtcpMux())
         {
-            rtcpmux = true;
-            if (channelForDtls != null && channelForDtls instanceof RtpChannel)
-            {
-                ((RtpChannel) channelForDtls)
-                    .getDatagramFilter(true)
-                        .setAcceptNonRtp(false);
-            }
+//            rtcpmux = true;
+//            if (channelForDtls != null && channelForDtls instanceof RtpChannel)
+//            {
+//                ((RtpChannel) channelForDtls)
+//                    .getDatagramFilter(true)
+//                        .setAcceptNonRtp(false);
+//            }
         }
         dtlsControl.setRtcpmux(rtcpmux);
     }
