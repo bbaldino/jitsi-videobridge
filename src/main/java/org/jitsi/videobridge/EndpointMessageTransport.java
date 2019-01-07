@@ -17,6 +17,8 @@ package org.jitsi.videobridge;
 
 import org.jitsi.eventadmin.*;
 import org.jitsi.util.*;
+import org.jitsi.videobridge.datachannel.*;
+import org.jitsi.videobridge.datachannel.protocol.*;
 import org.jitsi.videobridge.rest.*;
 import org.json.simple.*;
 
@@ -35,7 +37,7 @@ import static org.jitsi.videobridge.EndpointMessageBuilder.*;
  */
 class EndpointMessageTransport
     extends AbstractEndpointMessageTransport
-    implements WebRtcDataStream.DataCallback
+    implements WebRtcDataStream.DataCallback, DataChannelStack.DataChannelMessageListener
 {
 
     /**
@@ -80,6 +82,8 @@ class EndpointMessageTransport
      */
     private WeakReference<SctpConnection> sctpConnection
         = new WeakReference<>(null);
+
+    private WeakReference<DataChannel> dataChannel = new WeakReference<>(null);
 
     /**
      * The listener which will be added to {@link SctpConnection}s associated
@@ -195,6 +199,10 @@ class EndpointMessageTransport
         {
             sendMessage((ColibriWebSocket) dst, message, errorMessage);
         }
+        else if (dst instanceof DataChannel)
+        {
+            sendMessage((DataChannel)dst, message, errorMessage);
+        }
         else
         {
             throw new IllegalArgumentException("unknown transport:" + dst);
@@ -207,6 +215,7 @@ class EndpointMessageTransport
      * @param message the message to send.
      * @param errorMessage an error message to be logged in case of failure.
      */
+    @Deprecated
     private void sendMessage(
             WebRtcDataStream dst, String message, String errorMessage)
     {
@@ -223,6 +232,11 @@ class EndpointMessageTransport
                     +   " (endpoint=" + endpoint.getID() + "): " + errorMessage,
                 ioe);
         }
+    }
+
+    private void sendMessage(DataChannel dst, String message, String errorMessage)
+    {
+        dst.sendString(message);
     }
 
     /**
@@ -346,6 +360,21 @@ class EndpointMessageTransport
         endpoint.selectedEndpointsChanged(newSelectedEndpoints);
     }
 
+    @Override
+    public void onDataChannelMessage(DataChannelMessage dataChannelMessage)
+    {
+        webSocketLastActive = false;
+        endpoint.getConference().getVideobridge().getStatistics().
+                totalDataChannelMessagesReceived.incrementAndGet();
+
+        if (dataChannelMessage instanceof DataChannelStringMessage)
+        {
+            DataChannelStringMessage dataChannelStringMessage =
+                    (DataChannelStringMessage)dataChannelMessage;
+            onMessage(null, dataChannelStringMessage.data);
+        }
+    }
+
     /**
      * {@inheritDoc}
      */
@@ -388,10 +417,14 @@ class EndpointMessageTransport
      * last one to have received data will be returned. Otherwise, {@code null}
      * will be returned.
      */
+    //TODO(brian): seems like it'd be nice to have the websocket and datachannel share a common parent class (or, at
+    // least, have a class that is returned here and provides a common API but can wrap either a websocket or
+    // datachannel)
     private Object getActiveTransportChannel()
         throws IOException
     {
         SctpConnection sctpConnection = getSctpConnection();
+        DataChannel dataChannel = this.dataChannel.get();
         ColibriWebSocket webSocket = this.webSocket;
         String endpointId = endpoint.getID();
 
@@ -405,7 +438,12 @@ class EndpointMessageTransport
         // or it has been closed.
         if (dst == null)
         {
-            if (sctpConnection != null && sctpConnection.isReady())
+            if (dataChannel != null && dataChannel.isReady())
+            {
+                System.out.println("TEMP: EMT transport is datachannel");
+                dst = dataChannel;
+            }
+            else if (sctpConnection != null && sctpConnection.isReady())
             {
                 dst = sctpConnection.getDefaultDataStream();
 
@@ -525,6 +563,40 @@ class EndpointMessageTransport
 
         webSocketLastActive = true;
         onMessage(ws, message);
+    }
+
+    void setDataChannel(DataChannel dataChannel)
+    {
+        DataChannel prevDataChannel = this.dataChannel.get();
+        if (prevDataChannel == null)
+        {
+            this.dataChannel = new WeakReference<>(dataChannel);
+            // We install the handler first, otherwise the 'ready' might fire after we check it but before we
+            //  install the handler
+            dataChannel.onDataChannelEvents(new DataChannelStack.DataChannelEventListener()
+            {
+                @Override
+                public void onDataChannelOpened()
+                {
+                    notifyTransportChannelConnected();
+                }
+            });
+            if (dataChannel.isReady())
+            {
+                notifyTransportChannelConnected();
+            }
+            dataChannel.onDataChannelMessage(this);
+        }
+        else if (prevDataChannel == dataChannel)
+        {
+            //TODO: i think we should be able to ensure this doesn't happen, so throwing for now.  if there's a good
+            // reason for this, we can make this a no-op
+            throw new Error("Re-setting the same data channel");
+        }
+        else {
+            throw new Error("Overwriting a previous data channel!");
+        }
+
     }
 
     /**
