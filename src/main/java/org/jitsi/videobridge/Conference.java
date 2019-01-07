@@ -886,6 +886,7 @@ public class Conference
      *
      * @return the <tt>Content</tt>s of this <tt>Conference</tt>
      */
+    @Deprecated
     public Content[] getContents()
     {
         synchronized (contents)

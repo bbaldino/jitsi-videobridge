@@ -27,7 +27,6 @@ import org.jitsi.meet.*;
 import org.jitsi.service.neomedia.*;
 import org.jitsi.service.packetlogging.*;
 import org.jitsi.stats.media.*;
-import org.jitsi.videobridge.cc.*;
 import org.jitsi.videobridge.xmpp.*;
 
 /**
@@ -115,6 +114,13 @@ public class JvbBundleConfig
     {
         return BUNDLES;
     }
+    /**
+     * The property name of the setting that enables/disables VP8 picture id
+     * rewriting.
+     */
+    //TODO(brian): moved this here when removing SimulcastController, find a home for it.
+    public static final String ENABLE_VP8_PICID_REWRITING_PNAME
+            = "org.jitsi.videobridge.ENABLE_VP8_PICID_REWRITING";
 
     @Override
     public Map<String, String> getSystemPropertyDefaults()
@@ -179,7 +185,7 @@ public class JvbBundleConfig
         // Enable picture ID rewriting by default, as jumping picture IDs cause
         // recent versions of Chrome to crash.
         defaults.put(
-            SimulcastController.ENABLE_VP8_PICID_REWRITING_PNAME, true_);
+            ENABLE_VP8_PICID_REWRITING_PNAME, true_);
 
         // Trust the send side bandwidth estimations (which enables adaptivity)
         // by default.
