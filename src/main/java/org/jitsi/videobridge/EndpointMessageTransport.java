@@ -348,7 +348,6 @@ class EndpointMessageTransport
         {
             if (dataChannel != null && dataChannel.isReady())
             {
-                System.out.println("TEMP: EMT transport is datachannel");
                 dst = dataChannel;
             }
             else
