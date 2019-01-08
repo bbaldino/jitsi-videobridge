@@ -247,7 +247,7 @@ public class Endpoint
         }
         sctpManager.closeConnection();
 
-        logger.info(transceiver.getStats());
+        logger.info(transceiver.getStats().prettyPrint(0));
     }
 
     private DataChannelStack dataChannelStack;
