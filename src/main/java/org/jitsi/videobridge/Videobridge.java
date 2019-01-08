@@ -920,6 +920,10 @@ public class Videobridge
                     continue;
                 }
             }
+            else
+            {
+                channel.setExpire(VideobridgeExpireThread.DEFAULT_EXPIRE);
+            }
             channel.direction = channelDirection;
 
             List<PayloadTypePacketExtension> epPayloadTypes =
@@ -1105,6 +1109,10 @@ public class Videobridge
                 {
                     continue;
                 }
+            }
+            else
+            {
+                sctpConnection.setExpire(sctpConnExpire);
             }
             ColibriConferenceIQ.SctpConnection responseSctpIq = new ColibriConferenceIQ.SctpConnection();
 
