@@ -238,7 +238,7 @@ public class Endpoint
         int maxExpireTimeSecsFromChannelShims = channelShims.stream()
                 .map(WeakReference::get)
                 .filter(Objects::nonNull)
-                .map(ColibriShim.Channel::getExpire)
+                .map(ColibriShim.ChannelShim::getExpire)
                 .mapToInt(exp -> exp)
                 .max()
                 .orElse(0);

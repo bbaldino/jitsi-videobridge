@@ -849,7 +849,7 @@ public class Videobridge
                     ? (ColibriConferenceIQ.OctoChannel) channelIq
                     : null;
 
-            ColibriShim.Channel channel;
+            ColibriShim.ChannelShim channelShim;
             if (channelId == null)
             {
                 if (channelExpire == 0)
@@ -875,16 +875,16 @@ public class Videobridge
                     throw new IqProcessingException(
                             XMPPError.Condition.bad_request, "Endpoint ID does not match channel bundle ID");
                 }
-                channel = content.createRtpChannel(conference, endpointId, octoChannelIQ != null);
-                if (channel == null)
+                channelShim = content.createRtpChannel(conference, endpointId, octoChannelIQ != null);
+                if (channelShim == null)
                 {
                     throw new IqProcessingException(XMPPError.Condition.internal_server_error, "Error creating channel");
                 }
             }
             else
             {
-                channel = content.getChannel(channelId);
-                if (channel == null)
+                channelShim = content.getChannel(channelId);
+                if (channelShim == null)
                 {
                     if (channelExpire == 0)
                     {
@@ -909,34 +909,34 @@ public class Videobridge
                     throw new IqProcessingException(
                             XMPPError.Condition.bad_request, "Invalid 'expire' value: " + channelExpire);
                 }
-                channel.setExpire(channelExpire);
+                channelShim.setExpire(channelExpire);
                 /*
                  * If the request indicates that it wants the channel
                  * expired and the channel is indeed expired, then
                  * the request is valid and has correctly been acted upon.
                  */
-                if ((channelExpire == 0) && channel.isExpired())
+                if ((channelExpire == 0) && channelShim.isExpired())
                 {
                     continue;
                 }
             }
             else
             {
-                channel.setExpire(VideobridgeExpireThread.DEFAULT_EXPIRE);
+                channelShim.setExpire(VideobridgeExpireThread.DEFAULT_EXPIRE);
             }
-            channel.direction = channelDirection;
+            channelShim.direction = channelDirection;
 
             List<PayloadTypePacketExtension> epPayloadTypes =
                     endpointPayloadTypes.computeIfAbsent(endpointId, key -> new ArrayList<>());
             epPayloadTypes.addAll(channelPayloadTypes);
-            channel.setPayloadTypes(channelPayloadTypes);
+            channelShim.setPayloadTypes(channelPayloadTypes);
 
             List<RTPHdrExtPacketExtension> epHeaderExts =
                     endpointHeaderExts.computeIfAbsent(endpointId, key -> new ArrayList<>());
             epHeaderExts.addAll(channelIq.getRtpHeaderExtensions());
-            channel.rtpHeaderExtensions = channelRtpHeaderExtensions;
+            channelShim.rtpHeaderExtensions = channelRtpHeaderExtensions;
 
-            channel.sources = channelSources;
+            channelShim.sources = channelSources;
 
 
             if (channelSourceGroups != null)
@@ -945,14 +945,14 @@ public class Videobridge
                         endpointSourceGroups.computeIfAbsent(endpointId, key -> new ArrayList<>());
                 epSourceGroups.addAll(channelSourceGroups);
             }
-            channel.sourceGroups = channelSourceGroups;
+            channelShim.sourceGroups = channelSourceGroups;
 
             if (channelLastN != null)
             {
-                channel.lastN = channelLastN;
+                channelShim.lastN = channelLastN;
             }
             ColibriConferenceIQ.Channel responseChannelIQ = new ColibriConferenceIQ.Channel();
-            channel.describe(responseChannelIQ);
+            channelShim.describe(responseChannelIQ);
             createdOrUpdatedChannels.add(responseChannelIQ);
         }
 
