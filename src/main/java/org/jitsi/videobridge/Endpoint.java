@@ -119,6 +119,9 @@ public class Endpoint
      */
     private AtomicInteger selectedCount = new AtomicInteger(0);
 
+    /**
+     * Pool shared by all endpoint instances for IO tasks
+     */
     private static final ExecutorService ioPool =
             Executors.newCachedThreadPool(new NameableThreadFactory("Endpoint ioPool"));
 
@@ -317,6 +320,7 @@ public class Endpoint
         ((IceDtlsTransportManager)transportManager).onDtlsHandshakeComplete(() -> {
             logger.info("Endpoint " + getID() + " dtls handshake is complete, starting a reader for incoming SCTP" +
                     " packets");
+            //TODO(brian): i think this work is not that CPU intensive, so using the IO pool is ok?
             ioPool.submit(this::readIncomingSctpPackets);
         });
 
@@ -376,8 +380,7 @@ public class Endpoint
         socket.listen();
         onTransportManagerSet.thenRun(() -> {
             ((IceDtlsTransportManager)transportManager).onDtlsHandshakeComplete(() -> {
-                //TODO: move this to an executor/pool
-                new Thread(() -> {
+                ioPool.submit(() -> {
                     while (!socket.accept())
                     {
                         try
@@ -389,7 +392,7 @@ public class Endpoint
                         }
                     }
                     logger.info("SCTP socket " + socket.hashCode() + " accepted connection");
-                }).start();
+                });
             });
         });
     }
