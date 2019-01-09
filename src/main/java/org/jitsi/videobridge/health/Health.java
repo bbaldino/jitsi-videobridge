@@ -78,7 +78,7 @@ public class Health
         }
 
 
-        // TODO(brian): The below connection won't work with single port mode.  I think this is because both agent's
+        // NOTE(brian): The below connection won't work with single port mode.  I think this is because both agent's
         // bind to the single port and we can't demux the ice packets correctly.  Forcing non-single port mode (via
         // hardcoding rtcpmux to false elsewhere) works, but causes other problems since we don't properly support
         // non-rtcpmux.
@@ -129,8 +129,7 @@ public class Health
 
         // Conference
         ColibriShim.ConferenceShim conferenceShim =
-                videobridge.getColibriShim().createConference(null, null, null);
-        System.out.println("TEMP: created conference " + conferenceShim.getId() + " from health check");
+                videobridge.getColibriShim().createConference(null, null, false, null);
 
         // Fail as quickly as possible.
         if (conferenceShim == null || conferenceShim.conference == null)
