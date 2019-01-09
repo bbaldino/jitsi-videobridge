@@ -15,6 +15,8 @@
  */
 package org.jitsi.videobridge.health;
 
+import net.java.sip.communicator.impl.protocol.jabber.extensions.colibri.*;
+import net.java.sip.communicator.impl.protocol.jabber.extensions.jingle.*;
 import org.eclipse.jetty.server.*;
 import org.ice4j.ice.harvest.*;
 import org.jitsi.videobridge.*;
