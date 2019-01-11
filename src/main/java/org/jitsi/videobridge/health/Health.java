@@ -144,8 +144,7 @@ public class Health
             }
             finally
             {
-                //TODO(brian)
-//                conference.expire();
+                videobridge.getColibriShim().expireConference(conferenceShim.getId());
             }
         }
     }

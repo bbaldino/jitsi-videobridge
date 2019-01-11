@@ -437,8 +437,11 @@ public class Conference
     {
         synchronized (transportManagers)
         {
-            transportManagers.forEach((id, tm) -> closeTransportManager(tm));
-            transportManagers.clear();
+            while (!transportManagers.isEmpty())
+            {
+                // closeTransportManager handles the removal
+                closeTransportManager(transportManagers.values().iterator().next());
+            }
         }
     }
 
@@ -1345,12 +1348,7 @@ public class Conference
     @Override
     public boolean shouldExpire()
     {
-        //TODO(brian): fix this when reimplementing expire logic
-        return false;
-//        return
-//            getContents().length == 0
-//                && getLastActivityTime() + 1000L * Channel.DEFAULT_EXPIRE
-//                        < System.currentTimeMillis();
+        return getEndpoints().size() == 0;
     }
 
     /**
