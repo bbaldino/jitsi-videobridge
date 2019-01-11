@@ -276,7 +276,10 @@ public class Endpoint
         {
             messageTransport.close();
         }
-        sctpManager.closeConnection();
+        if (sctpManager != null)
+        {
+            sctpManager.closeConnection();
+        }
 
         logger.info(transceiver.getNodeStats().prettyPrint(0));
     }
