@@ -52,12 +52,28 @@ public class PayloadTypeUtil
         // make an educated guess.
         MediaType mediaType = getMediaType(ext.getName());
 
-        return new PayloadType(
-                (byte) ext.getID(),
-                ext.getName(),
-                mediaType,
-                ext.getClockrate(),
-                parameters);
+        byte id = (byte)ext.getID();
+        int clockRate = ext.getClockrate();
+        String name = ext.getName();
+
+        if (PayloadType.VP8.equalsIgnoreCase(name))
+        {
+            return new Vp8PayloadType(id, parameters);
+        }
+        else if (PayloadType.H264.equalsIgnoreCase(name))
+        {
+            return new H264PayloadType(id, parameters);
+        }
+        else if (PayloadType.VP9.equalsIgnoreCase(name))
+        {
+            return new Vp9PayloadType(id, parameters);
+        }
+        else if (PayloadType.RTX.equalsIgnoreCase(name))
+        {
+            return new RtxPayloadType(id);
+        }
+
+        return null;
     }
 
     /**
