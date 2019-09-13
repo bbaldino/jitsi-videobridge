@@ -53,9 +53,11 @@ public class BridgeShutdownTest
         throws InterruptedException
     {
         // Allow focus JID
+        //TODO(brian): good way to do this without hard-coding the config name?
+        // ideally we'd be able to pass in a config instance
         System.setProperty(
-            Videobridge.SHUTDOWN_ALLOWED_SOURCE_REGEXP_PNAME,
-            "focus.*");
+                "videobridge.shutdown-allowed-source-regexp",
+                "focus.*");
 
         osgiHandler.start();
 

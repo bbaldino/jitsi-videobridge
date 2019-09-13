@@ -18,7 +18,10 @@ package org.jitsi.videobridge;
 import org.jitsi.cmd.*;
 import org.jitsi.meet.*;
 import org.jitsi.videobridge.osgi.*;
+import org.jitsi.videobridge.util.*;
 import org.jitsi.videobridge.xmpp.*;
+
+import java.util.*;
 
 /**
  * Provides the <tt>main</tt> entry point of the Jitsi Videobridge application
@@ -102,9 +105,9 @@ public class Main
 
         cmdLine.parse(args);
 
+        List<String> apis = JvbConfig.getConfig().getStringList("videobridge.enabled-apis");
+
         // Parse the command-line arguments.
-        String apis
-            = cmdLine.getOptionValue(APIS_ARG_NAME, Videobridge.XMPP_API);
         String domain = cmdLine.getOptionValue(DOMAIN_ARG_NAME, null);
         int port = cmdLine.getIntOptionValue(PORT_ARG_NAME, PORT_ARG_VALUE);
         String secret = cmdLine.getOptionValue(SECRET_ARG_NAME, "");
@@ -116,16 +119,6 @@ public class Main
             = cmdLine.getOptionValue(
                     HOST_ARG_NAME,
                     domain == null ? HOST_ARG_VALUE : domain);
-
-        // Before initializing the application programming interfaces (APIs) of
-        // Jitsi Videobridge, set any System properties which they use and which
-        // may be specified by the command-line arguments.
-        System.setProperty(
-                Videobridge.REST_API_PNAME,
-                Boolean.toString(apis.contains(Videobridge.REST_API)));
-        System.setProperty(
-                Videobridge.XMPP_API_PNAME,
-                Boolean.toString(apis.contains(Videobridge.XMPP_API)));
 
         ComponentMain main = new ComponentMain();
         BundleConfig osgiBundles = new BundleConfig();
