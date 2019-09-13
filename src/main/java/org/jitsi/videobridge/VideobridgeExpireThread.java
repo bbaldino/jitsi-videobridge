@@ -15,14 +15,13 @@
  */
 package org.jitsi.videobridge;
 
-import java.util.*;
-import java.util.concurrent.*;
-
-import org.jitsi.osgi.*;
-import org.jitsi.service.configuration.*;
 import org.jitsi.utils.concurrent.*;
 import org.jitsi.utils.logging.*;
+import org.jitsi.videobridge.util.*;
 import org.osgi.framework.*;
+
+import java.util.*;
+import java.util.concurrent.*;
 
 /**
  * Implements a <tt>Thread</tt> which expires the {@link AbstractEndpoint}s and
@@ -106,16 +105,8 @@ public class VideobridgeExpireThread
      */
     void start(final BundleContext bundleContext)
     {
-        ConfigurationService cfg
-                = ServiceUtils2.getService(
-                bundleContext,
-                ConfigurationService.class);
-
-        int expireCheckSleepSec
-                = (cfg == null)
-                    ? EXPIRE_CHECK_SLEEP_SEC_DEFAULT
-                    : cfg.getInt(
-                        EXPIRE_CHECK_SLEEP_SEC, EXPIRE_CHECK_SLEEP_SEC_DEFAULT);
+        int expireCheckSleepSec =
+                (int)JvbConfig.getConfig().getDuration("videobridge.expire-thread-interval").getSeconds();
         logger.info(
             "Starting with " + expireCheckSleepSec + " second interval.");
 
