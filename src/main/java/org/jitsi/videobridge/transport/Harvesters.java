@@ -16,9 +16,11 @@
 
 package org.jitsi.videobridge.transport;
 
+import com.typesafe.config.*;
 import org.ice4j.ice.harvest.*;
 import org.jitsi.service.configuration.*;
 import org.jitsi.utils.logging.*;
+import org.jitsi.videobridge.util.*;
 
 import java.io.*;
 import java.util.*;
@@ -137,6 +139,7 @@ public class Harvesters
      */
     public static void initializeStaticConfiguration(ConfigurationService cfg)
     {
+        Config harvesterConfig = JvbConfig.getConfig().getConfig("videobridge.transport.harvesters");
         synchronized (Harvesters.class)
         {
             if (staticConfigurationInitialized)
@@ -145,11 +148,9 @@ public class Harvesters
             }
             staticConfigurationInitialized = true;
 
-
-            int singlePort = cfg.getInt(SINGLE_PORT_HARVESTER_PORT,
-                    SINGLE_PORT_DEFAULT_VALUE);
-            if (singlePort != -1)
+            if (harvesterConfig.getBoolean("single-port.enabled"))
             {
+                int singlePort = harvesterConfig.getInt("single-port.port");
                 singlePortHarvesters
                         = SinglePortUdpHarvester.createHarvesters(singlePort);
                 if (singlePortHarvesters.isEmpty())
@@ -159,9 +160,16 @@ public class Harvesters
                 }
 
                 healthy = singlePortHarvesters != null;
+
+            }
+            if (harvesterConfig.getBoolean("tcp.enabled"))
+            {
+                int port = harvesterConfig.getInt("tcp.port");
+                boolean fallback = false;
+                if ()
             }
 
-            if (!cfg.getBoolean(DISABLE_TCP_HARVESTER, false))
+            if (transportConfig.getBoolean("tcp-harvester-enabled"))
             {
                 int port = cfg.getInt(TCP_HARVESTER_PORT, -1);
                 boolean fallback = false;

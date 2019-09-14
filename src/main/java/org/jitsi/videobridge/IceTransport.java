@@ -19,6 +19,7 @@ import java.beans.*;
 import java.io.*;
 import java.util.*;
 
+import com.typesafe.config.*;
 import org.ice4j.*;
 import org.ice4j.ice.*;
 import org.ice4j.ice.harvest.*;
@@ -28,6 +29,7 @@ import org.jitsi.service.configuration.*;
 import org.jitsi.utils.logging2.*;
 import org.jitsi.videobridge.rest.*;
 import org.jitsi.videobridge.transport.*;
+import org.jitsi.videobridge.util.*;
 import org.jitsi.xmpp.extensions.colibri.*;
 import org.jitsi.xmpp.extensions.jingle.*;
 import org.jitsi.xmpp.extensions.jingle.CandidateType;
@@ -44,12 +46,6 @@ import org.osgi.framework.*;
 public class IceTransport
 {
     /**
-     * The name of the property that can be used to control the value of
-     * {@link #iceUfragPrefix}.
-     */
-    public static final String ICE_UFRAG_PREFIX_PNAME
-            = "org.jitsi.videobridge.ICE_UFRAG_PREFIX";
-    /**
      * The optional prefix to use for generated ICE local username fragments.
      */
     private static String iceUfragPrefix;
@@ -63,12 +59,6 @@ public class IceTransport
      * directly.
      */
     private static boolean useComponentSocket = true;
-
-    /**
-     * The name of the property which configures {@link #useComponentSocket}.
-     */
-    public static final String USE_COMPONENT_SOCKET_PNAME
-        = "org.jitsi.videobridge.USE_COMPONENT_SOCKET";
 
     /**
      * The name of the property used to control {@link #keepAliveStrategy}.
@@ -217,20 +207,15 @@ public class IceTransport
      */
     private void configureHarvesters(Agent iceAgent, ConfigurationService cfg)
     {
-        if (cfg != null)
-        {
-            useComponentSocket
-                    = cfg.getBoolean(
-                            USE_COMPONENT_SOCKET_PNAME,
-                            useComponentSocket);
-        }
+        Config transportConfig = JvbConfig.getConfig().getConfig("videobridge.transport");
+        useComponentSocket = transportConfig.getBoolean("use-component-socket");
         if (logger.isDebugEnabled())
         {
             logger.debug("Using component socket: " + useComponentSocket);
         }
 
-        iceUfragPrefix = cfg.getString(ICE_UFRAG_PREFIX_PNAME, null);
-        String strategyName = cfg.getString(KEEP_ALIVE_STRATEGY_PNAME);
+        iceUfragPrefix = transportConfig.getString("ice-ufrag-prefix");
+        String strategyName = transportConfig.getString("keep-alive-strategy");
         KeepAliveStrategy strategy
                 = KeepAliveStrategy.fromString(strategyName);
         if (strategyName != null && strategy == null)

@@ -118,13 +118,6 @@ public class Videobridge
     public static final String XMPP_API = "xmpp";
 
     /**
-     * The (base) <tt>System</tt> and/or <tt>ConfigurationService</tt> property
-     * of the XMPP API of Jitsi Videobridge.
-     */
-    public static final String XMPP_API_PNAME
-        = "org.jitsi.videobridge." + XMPP_API;
-
-    /**
      * The pattern used to filter entities that are allowed to operate
      * the videobridge.
      */
