@@ -87,6 +87,8 @@ public class Endpoint
 
     private SctpTransportStandalone sctpTransportStandalone;
 
+    private DataChannelTransportStandalone dataChannelTransportStandalone;
+
     /**
      * The time at which this endpoint was created (in millis since epoch)
      */
@@ -846,15 +848,24 @@ public class Endpoint
             @Override
             public void connected()
             {
-                //TODO: data channel setup
+                // Once SCTP connects successfully, we'll start up the data channel
+                dataChannelTransportStandalone = new DataChannelTransportStandalone(logger);
+                dataChannelTransportStandalone.dataSender = (data, sid, ppid) -> {
+                    // We always send messages ordered
+                    sctpTransportStandalone.send(data, true, sid, ppid.intValue());
+                    return Unit.INSTANCE;
+                };
             }
 
             @Override
             public void disconnected()
             {
                 logger.info("SCTP connection disconnected");
-
             }
+        };
+        sctpTransportStandalone.incomingDataHandler = (data, sid, ssn, tsn, ppid, context, flags) -> {
+            dataChannelTransportStandalone.dataReceived(data, 0, data.length, sid, ppid);
+            return Unit.INSTANCE;
         };
 
         // Create the SctpManager and provide it a method for sending SCTP data
