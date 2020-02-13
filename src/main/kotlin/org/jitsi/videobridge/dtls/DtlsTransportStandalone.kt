@@ -22,13 +22,16 @@ import org.jitsi.nlj.dtls.DtlsServer
 import org.jitsi.nlj.dtls.DtlsStack
 import org.jitsi.nlj.srtp.TlsRole
 import org.jitsi.rtp.UnparsedPacket
+import org.jitsi.rtp.extensions.unsigned.toPositiveInt
 import org.jitsi.utils.logging2.Logger
 import org.jitsi.utils.logging2.createChildLogger
 import org.jitsi.videobridge.aspect.onlyIf
+import org.jitsi.videobridge.util.TaskPools
 import org.jitsi.xmpp.extensions.jingle.DtlsFingerprintPacketExtension
 import org.jitsi.xmpp.extensions.jingle.IceUdpTransportPacketExtension
 import java.lang.IllegalStateException
 import java.net.DatagramPacket
+import java.util.concurrent.atomic.AtomicBoolean
 
 typealias Offset = Int
 typealias Length = Int
@@ -55,9 +58,13 @@ class DtlsTransportStandalone(
 
     private var incomingDataHandler: IncomingDtlsTransportDataHandler? = null
 
+    @JvmField
     var dataSender: OutgoingDtlsDataSender? = null
 
+    @JvmField
     var eventHandler: DtlsTransportEventHandler? = null
+
+    private val closed = AtomicBoolean(false)
 
     fun setSetupAttribute(setupAttr: String) = onlyIf(dtlsStack.role == null) {
         when (setupAttr.toLowerCase()) {
@@ -82,6 +89,14 @@ class DtlsTransportStandalone(
             logger.info("Assume that the remote side is Jigasi, we'll act as server")
             dtlsStack.actAsServer()
         }
+    }
+
+    fun startHandshake() {
+        logger.info("Starting DTLS.")
+        if (dtlsStack.role == null) {
+            logger.warn("Starting the DTLS stack before it knows its role")
+        }
+        dtlsStack.start()
     }
 
     //TODO: create a 'DtlsPacket' for some type safety?
@@ -120,7 +135,18 @@ class DtlsTransportStandalone(
         }
     }
 
+    fun close() {
+        if (closed.compareAndSet(false, true)) {
+            // TODO: any cleanup to do here?
+        }
+    }
+
     interface DtlsTransportEventHandler {
         fun dtlsHandshakeCompleted(chosenSrtpProfile: Int, tlsRole: TlsRole, keyingMaterial: ByteArray)
     }
 }
+
+// TODO: move these
+private val DTLS_RANGE = 20..63
+fun DatagramPacket.looksLikeDtls(): Boolean =
+    data[offset].toPositiveInt() in DTLS_RANGE

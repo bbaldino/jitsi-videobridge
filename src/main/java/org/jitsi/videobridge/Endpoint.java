@@ -17,6 +17,8 @@ package org.jitsi.videobridge;
 
 import kotlin.*;
 import kotlin.jvm.functions.*;
+import org.ice4j.Transport;
+import org.ice4j.ice.*;
 import org.jetbrains.annotations.*;
 import org.jitsi.nlj.*;
 import org.jitsi.nlj.format.*;
@@ -37,6 +39,8 @@ import org.jitsi.utils.logging2.Logger;
 import org.jitsi.videobridge.cc.*;
 import org.jitsi.videobridge.datachannel.*;
 import org.jitsi.videobridge.datachannel.protocol.*;
+import org.jitsi.videobridge.dtls.*;
+import org.jitsi.videobridge.ice.*;
 import org.jitsi.videobridge.rest.*;
 import org.jitsi.videobridge.rest.root.colibri.debug.*;
 import org.jitsi.videobridge.sctp.*;
@@ -139,6 +143,9 @@ public class Endpoint
      */
     @NotNull
     private final DtlsTransport dtlsTransport;
+
+    private final IceTransportStandalone iceTransportStandalone;
+    private final DtlsTransportStandalone dtlsTransportStandalone;
 
     /**
      * The {@link Transceiver} which handles receiving and sending of (S)RTP.
@@ -267,6 +274,106 @@ public class Endpoint
         recurringRunnableExecutor.registerRecurringRunnable(bandwidthProbing);
 
         dtlsTransport = new DtlsTransport(this, iceControlling, logger);
+        iceTransportStandalone = new IceTransportStandalone(getID(), iceControlling, logger);
+        dtlsTransportStandalone = new DtlsTransportStandalone(logger);
+
+        // Demux the data that comes out of ICE transport.  SRTP packets go
+        // straight to the transceiver, DTLS packets go through the DTLS
+        // transport.
+        iceTransportStandalone.dataHandler = datagramPacket -> {
+            if (DtlsTransportStandaloneKt.looksLikeDtls(datagramPacket))
+            {
+                dtlsTransportStandalone.dataReceived(datagramPacket);
+            }
+            else
+            {
+                // Non-DTLS packets are SRTP, which go straight to the transceiver
+                byte[] buf = ByteBufferPool.getBuffer(
+                    datagramPacket.getLength() +
+                        RtpPacket.BYTES_TO_LEAVE_AT_END_OF_PACKET +
+                        RtpPacket.BYTES_TO_LEAVE_AT_END_OF_PACKET
+                );
+                System.arraycopy(
+                    datagramPacket.getData(), datagramPacket.getOffset(),
+                    buf, RtpPacket.BYTES_TO_LEAVE_AT_START_OF_PACKET,
+                    datagramPacket.getLength());
+                Packet pkt = new UnparsedPacket(
+                    buf, RtpPacket.BYTES_TO_LEAVE_AT_START_OF_PACKET, datagramPacket.getLength()
+                );
+                PacketInfo pktInfo = new PacketInfo(pkt);
+                pktInfo.setReceivedTime(System.currentTimeMillis());
+                transceiver.handleIncomingPacket(pktInfo);
+            }
+            return Unit.INSTANCE;
+        };
+
+        iceTransportStandalone.eventHandler = new IceTransportStandalone.IceTransportEventHandler() {
+            @Override
+            public void iceConnected()
+            {
+                getConference().getStatistics().hasIceSucceededEndpoint = true;
+
+                Videobridge.Statistics stats
+                    = getConference().getVideobridge().getStatistics();
+                stats.totalIceSucceeded.incrementAndGet();
+
+                // TODO: pass info about the selected pair to iceConnected so
+                //  we can do this stat
+//                CandidatePair selectedPair = iceComponent.getSelectedPair();
+//                RemoteCandidate remoteCandidate =
+//                    selectedPair == null ? null : selectedPair.getRemoteCandidate();
+//
+//                if (remoteCandidate == null)
+//                {
+//                    return;
+//                }
+//
+//                if (remoteCandidate.getTransport() == org.ice4j.Transport.TCP
+//                    || remoteCandidate.getTransport() == Transport.SSLTCP)
+//                {
+//                    stats.totalIceSucceededTcp.incrementAndGet();
+//                }
+
+                iceTransportStandalone.startReadingData();
+
+                TaskPools.IO_POOL.submit(() -> {
+                    try
+                    {
+                        dtlsTransportStandalone.startHandshake();
+                    }
+                    catch (Throwable t)
+                    {
+                        // TODO: shut everything down if this happens?
+                        logger.error("Error during DTLS negotiation, closing DTLS transport", t);
+                        dtlsTransportStandalone.close();
+                    }
+                });
+            }
+
+            @Override
+            public void iceFailed()
+            {
+                getConference().getVideobridge().getStatistics()
+                    .totalIceFailed.incrementAndGet();
+                getConference().getStatistics().hasIceFailedEndpoint = true;
+            }
+
+            @Override
+            public void iceConsentUpdated(@NotNull Instant time)
+            {
+                transceiver.getPacketIOActivity().setLastIceActivityInstant(time);
+            }
+        };
+
+        dtlsTransportStandalone.eventHandler = new DtlsTransportStandalone.DtlsTransportEventHandler()
+        {
+            @Override
+            public void dtlsHandshakeCompleted(int chosenSrtpProfile, @NotNull TlsRole tlsRole, @NotNull byte[] keyingMaterial)
+            {
+                logger.info("DTLS handshake complete");
+                // TODO: start the SCTP handshake
+            }
+        };
 
         if (conference.includeInStatistics())
         {
@@ -377,6 +484,9 @@ public class Endpoint
      */
     private boolean isTransportConnected()
     {
+        // TODO: add connected state to new transports?  or should we keep
+        //  track of it all in endpoint based on the events we've received
+        //  from the transports?
         return dtlsTransport.isConnected();
     }
 
@@ -553,6 +663,8 @@ public class Endpoint
     @Override
     public boolean shouldExpire()
     {
+        // TODO: track whether things have failed in the transports? or
+        //  here in endpoint?
         boolean iceFailed = dtlsTransport.hasIceFailed();
         if (iceFailed)
         {
@@ -634,6 +746,8 @@ public class Endpoint
         getConference().encodingsManager.unsubscribe(this);
 
         dtlsTransport.close();
+        iceTransportStandalone.close();
+        dtlsTransportStandalone.close();
 
         logger.info("Expired.");
     }
@@ -700,6 +814,7 @@ public class Endpoint
                     PacketInfo packet
                         = new PacketInfo(new UnparsedPacket(data, offset, length));
                     dtlsTransport.sendDtlsData(packet);
+                    dtlsTransportStandalone.send(data, offset, length);
                     return 0;
                 },
                 logger
@@ -763,6 +878,8 @@ public class Endpoint
         };
         socket.listen();
 
+        // TODO: once sctp transport is done, start the socket handshake when
+        //  dtls connects
         dtlsTransport.onDtlsHandshakeComplete(() -> {
             // We don't want to block the thread calling
             // onDtlsHandshakeComplete so run the socket acceptance in an IO
@@ -826,6 +943,8 @@ public class Endpoint
     public boolean acceptWebSocket(String password)
     {
         String icePassword = getIcePassword();
+        // TODO: will become:
+        // String icePassword = iceTransportStandalone.getIcePassword();
         if (icePassword == null || !icePassword.equals(password))
         {
             logger.warn("Incoming web socket request with an invalid password." +
@@ -886,6 +1005,7 @@ public class Endpoint
      * @return the password of the ICE Agent associated with this
      * {@link Endpoint}.
      */
+    // TODO: this method will go away
     private String getIcePassword()
     {
         return dtlsTransport.getIcePassword();
@@ -929,17 +1049,6 @@ public class Endpoint
     }
 
     /**
-     * Gets this {@link Endpoint}'s DTLS transport.
-     *
-     * @return this {@link Endpoint}'s DTLS transport.
-     */
-    @NotNull
-    public DtlsTransport getDtlsTransport()
-    {
-        return dtlsTransport;
-    }
-
-    /**
      * Sends a message to this {@link Endpoint} in order to notify it that the
      * list/set of {@code lastN} has changed.
      *
@@ -977,7 +1086,34 @@ public class Endpoint
      */
     public void setTransportInfo(IceUdpTransportPacketExtension transportInfo)
     {
-        getDtlsTransport().startConnectivityEstablishment(transportInfo);
+        dtlsTransport.startConnectivityEstablishment(transportInfo);
+
+        // TODO: will be replaced with:
+//        List<DtlsFingerprintPacketExtension> fingerprintExtensions
+//            = transportInfo.getChildExtensionsOfType(DtlsFingerprintPacketExtension.class);
+//        Map<String, String> remoteFingerprints = new HashMap<>();
+//        fingerprintExtensions.forEach(fingerprintExtension -> {
+//            if (fingerprintExtension.getHash() != null
+//                && fingerprintExtension.getFingerprint() != null)
+//            {
+//                remoteFingerprints.put(
+//                    fingerprintExtension.getHash(),
+//                    fingerprintExtension.getFingerprint());
+//            }
+//            else
+//            {
+//                logger.info("Ignoring empty DtlsFingerprint extension: "
+//                    + transportInfo.toXML());
+//            }
+//        });
+//        dtlsTransportStandalone.setRemoteFingerprints(remoteFingerprints);
+//        fingerprintExtensions.stream()
+//            .map(DtlsFingerprintPacketExtension::getSetup)
+//            .filter(Objects::nonNull)
+//            .findFirst()
+//            .ifPresent(dtlsTransportStandalone::setSetupAttribute);
+//
+//        iceTransportStandalone.startConnectivityEstablishment(transportInfo);
     }
 
     /**
@@ -1129,7 +1265,12 @@ public class Endpoint
     @Override
     public void describe(ColibriConferenceIQ.ChannelBundle channelBundle)
     {
-        getDtlsTransport().describe(channelBundle);
+        dtlsTransport.describe(channelBundle);
+        // TODO: will be replaced with:
+//        IceUdpTransportPacketExtension iceUdpTransportPacketExtension =
+//            new IceUdpTransportPacketExtension();
+//        iceTransportStandalone.describe(iceUdpTransportPacketExtension);
+//        dtlsTransportStandalone.describe(iceUdpTransportPacketExtension);
     }
 
 

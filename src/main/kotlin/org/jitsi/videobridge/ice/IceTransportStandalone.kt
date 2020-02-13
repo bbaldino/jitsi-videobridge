@@ -56,13 +56,15 @@ class IceTransportStandalone(
      * can determine SRTP or DTLS and, in the case of SRTP, copy the data into
      * a buffer with room left before and after the actual data here.
      */
-    private var dataHandler: IceTransportDataHandler? = null
+    @JvmField
+    var dataHandler: IceTransportDataHandler? = null
 
     private val closed = AtomicBoolean(false)
     private val iceConnected = AtomicBoolean(false)
 
     private val logger = createChildLogger(parentLogger)
 
+    @JvmField
     var eventHandler: IceTransportEventHandler? = null
 
     private val iceAgent = Agent(Config.ufragPrefix(), logger).apply {
@@ -169,7 +171,8 @@ class IceTransportStandalone(
         }
     }
 
-    fun startReadingData(socket: DatagramSocket) = requires(!closed.get()) {
+    fun startReadingData(): Unit = requires(!closed.get()) {
+        val socket = iceComponent.socket
         TaskPools.IO_POOL.submit {
             val receiveBuf = ByteBufferPool.getBuffer(1500)
             val packet = DatagramPacket(receiveBuf, 0, receiveBuf.size)
