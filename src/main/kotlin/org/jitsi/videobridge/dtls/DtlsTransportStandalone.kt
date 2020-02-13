@@ -56,7 +56,8 @@ class DtlsTransportStandalone(
         }
     }
 
-    private var incomingDataHandler: IncomingDtlsTransportDataHandler? = null
+    @JvmField
+    var incomingDataHandler: IncomingDtlsTransportDataHandler? = null
 
     @JvmField
     var dataSender: OutgoingDtlsDataSender? = null

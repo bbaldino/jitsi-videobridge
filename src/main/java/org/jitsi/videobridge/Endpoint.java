@@ -55,6 +55,7 @@ import org.json.simple.*;
 
 import java.beans.*;
 import java.io.*;
+import java.net.*;
 import java.nio.*;
 import java.time.*;
 import java.util.*;
@@ -83,6 +84,8 @@ public class Endpoint
      * The {@link SctpManager} instance we'll use to manage the SCTP connection
      */
     private SctpManager sctpManager;
+
+    private SctpTransportStandalone sctpTransportStandalone;
 
     /**
      * The time at which this endpoint was created (in millis since epoch)
@@ -365,13 +368,33 @@ public class Endpoint
             }
         };
 
+        dtlsTransportStandalone.incomingDataHandler = (data, off, len) -> {
+            sctpTransportStandalone.dataReceived(data, off, len);
+            return Unit.INSTANCE;
+        };
+
+        dtlsTransportStandalone.dataSender = (data, off, len) -> {
+            //TODO: re-use a datagram packet
+            iceTransportStandalone.send(new DatagramPacket(data, off, len));
+            return Unit.INSTANCE;
+        };
+
         dtlsTransportStandalone.eventHandler = new DtlsTransportStandalone.DtlsTransportEventHandler()
         {
             @Override
             public void dtlsHandshakeCompleted(int chosenSrtpProfile, @NotNull TlsRole tlsRole, @NotNull byte[] keyingMaterial)
             {
                 logger.info("DTLS handshake complete");
-                // TODO: start the SCTP handshake
+                TaskPools.IO_POOL.submit(() -> {
+                    try
+                    {
+                        sctpTransportStandalone.connect();
+                    }
+                    catch (Throwable t)
+                    {
+                        logger.error("Error while attempting SCTP connection", t);
+                    }
+                });
             }
         };
 
@@ -736,6 +759,10 @@ public class Endpoint
             {
                 sctpManager.closeConnection();
             }
+            if (sctpTransportStandalone != null)
+            {
+                sctpTransportStandalone.close();
+            }
         }
         catch (Exception e)
         {
@@ -808,13 +835,34 @@ public class Endpoint
         {
             logger.debug("Creating SCTP manager.");
         }
+        sctpTransportStandalone = new SctpTransportStandalone(logger);
+        sctpTransportStandalone.dataSender = (data, off, len) -> {
+            dtlsTransportStandalone.send(data, off, len);
+            return Unit.INSTANCE;
+        };
+        sctpTransportStandalone.actAsSctpServer();
+        sctpTransportStandalone.eventHandler = new SctpTransportStandalone.SctpTransportEventHandler()
+        {
+            @Override
+            public void connected()
+            {
+                //TODO: data channel setup
+            }
+
+            @Override
+            public void disconnected()
+            {
+                logger.info("SCTP connection disconnected");
+
+            }
+        };
+
         // Create the SctpManager and provide it a method for sending SCTP data
         this.sctpManager = new SctpManager(
                 (data, offset, length) -> {
                     PacketInfo packet
                         = new PacketInfo(new UnparsedPacket(data, offset, length));
                     dtlsTransport.sendDtlsData(packet);
-                    dtlsTransportStandalone.send(data, offset, length);
                     return 0;
                 },
                 logger
