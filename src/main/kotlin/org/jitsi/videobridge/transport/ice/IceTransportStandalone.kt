@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package org.jitsi.videobridge.ice
+package org.jitsi.videobridge.transport.ice
 
 import org.ice4j.Transport
 import org.ice4j.TransportAddress
@@ -29,7 +29,10 @@ import org.jitsi.utils.logging2.Logger
 import org.jitsi.utils.logging2.cdebug
 import org.jitsi.utils.logging2.createChildLogger
 import org.jitsi.videobridge.aspect.requires
-import org.jitsi.videobridge.ice.IceConfig.Config
+import org.jitsi.videobridge.ice.Harvesters
+import org.jitsi.videobridge.transport.ice.IceConfig.Config
+import org.jitsi.videobridge.ice.TransportUtils
+import org.jitsi.videobridge.transport.TransportState
 import org.jitsi.videobridge.util.ByteBufferPool
 import org.jitsi.videobridge.util.TaskPools
 import org.jitsi.xmpp.extensions.jingle.CandidatePacketExtension
@@ -38,7 +41,6 @@ import org.jitsi.xmpp.extensions.jingle.RtcpmuxPacketExtension
 import java.beans.PropertyChangeEvent
 import java.io.IOException
 import java.net.DatagramPacket
-import java.net.DatagramSocket
 import java.time.Instant
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -48,7 +50,7 @@ class IceTransportStandalone(
     endpointId: String,
     controlling: Boolean,
     parentLogger: Logger
-) {
+) : org.jitsi.videobridge.transport.Transport {
     /**
      * The handler which will be invoked when data is received.  The handler
      * does *not* own the given DatagramPacket, nor the buffer held within.
@@ -63,6 +65,9 @@ class IceTransportStandalone(
     private val iceConnected = AtomicBoolean(false)
 
     private val logger = createChildLogger(parentLogger)
+
+    override var state: TransportState = TransportState.UNITITALIZED
+        private set
 
     @JvmField
     var eventHandler: IceTransportEventHandler? = null
@@ -93,15 +98,12 @@ class IceTransportStandalone(
 
     //TODO: do we need to fire thee EventAdmin transportCreated event?
 
-    fun onData(handler: IceTransportDataHandler) {
-        this.dataHandler = handler
-    }
-
     fun getIcePassword(): String = requires(!closed.get()) {
         return iceAgent.localPassword
     }
 
     fun startConnectivityEstablishment(transportPacketExtension: IceUdpTransportPacketExtension) = requires(!closed.get()) {
+        logger.cdebug { "Starting ICE connectivity establishment" }
         if (iceAgent.state.isEstablished) {
             logger.cdebug { "Connection already established" }
             return
@@ -141,12 +143,14 @@ class IceTransportStandalone(
             // until we have at least one remote candidate per ICE Component.
             if (iceComponent.remoteCandidateCount > 0) {
                 logger.info("Starting the agent with remote candidates.")
+                state = TransportState.PENDING
                 iceAgent.startConnectivityEstablishment()
             }
         } else if (iceStream.remoteUfragAndPasswordKnown()) {
             // We don't have any remote candidates, but we already know the
             // remote ufrag and password, so we can start ICE.
             logger.info("Starting the Agent without remote candidates.")
+            state = TransportState.PENDING
             iceAgent.startConnectivityEstablishment()
         } else {
             logger.cdebug { "Not starting ICE, no ufrag and pwd yet. ${transportPacketExtension.toXML()}" }
@@ -168,10 +172,12 @@ class IceTransportStandalone(
             iceStream.removePairStateChangeListener(this::iceStreamPairChange)
             iceAgent.removeStateChangeListener(this::iceStateChange)
             iceAgent.free()
+            state = TransportState.CLOSED
         }
     }
 
     fun startReadingData(): Unit = requires(!closed.get()) {
+        logger.cdebug { "Starting to read incoming data" }
         val socket = iceComponent.socket
         TaskPools.IO_POOL.submit {
             val receiveBuf = ByteBufferPool.getBuffer(1500)
@@ -187,12 +193,18 @@ class IceTransportStandalone(
                     logger.warn("Stopping reader", e)
                     break
                 }
-                dataHandler?.invoke(packet)
+                dataHandler?.let {
+                    logger.cdebug { "Forwarding received data to handler" }
+                    it.invoke(packet)
+                } ?: run {
+                    logger.cdebug { "Data handler is null, dropping data" }
+                }
             }
         }
     }
 
     fun send(packet: DatagramPacket) = requires(!closed.get()) {
+        logger.cdebug { "Sending ICE data" }
         iceComponent.socket.send(packet)
     }
 
@@ -206,10 +218,14 @@ class IceTransportStandalone(
         when {
             transition.completed() ->  {
                 if (iceConnected.compareAndSet(false, true)) {
+                    state = TransportState.CONNECTED
                     eventHandler?.iceConnected()
                 }
             }
-            transition.failed() -> eventHandler?.iceFailed()
+            transition.failed() -> {
+                state = TransportState.FAILED
+                eventHandler?.iceFailed()
+            }
         }
     }
 
@@ -315,6 +331,7 @@ class IceTransportStandalone(
         if (transport.isTcpType()) {
             cpe.tcpType = tcpType.toString()
         }
+        cpe.type = org.jitsi.xmpp.extensions.jingle.CandidateType.valueOf(type.toString())
         cpe.ip = transportAddress.hostAddress
         cpe.port = transportAddress.port
 
@@ -322,6 +339,7 @@ class IceTransportStandalone(
             cpe.relAddr = it.hostAddress
             cpe.relPort = it.port
         }
+
         return cpe
     }
 
@@ -341,6 +359,10 @@ class IceTransportStandalone(
             return newState == IceProcessingState.FAILED ||
                     (oldState == IceProcessingState.RUNNING && newState == IceProcessingState.FAILED)
         }
+    }
+
+    class Stats {
+        var numPacketsReceived = 0
     }
 
     interface IceTransportEventHandler {

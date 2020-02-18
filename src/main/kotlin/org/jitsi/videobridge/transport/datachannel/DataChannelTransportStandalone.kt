@@ -14,14 +14,17 @@
  * limitations under the License.
  */
 
-package org.jitsi.videobridge.datachannel
+package org.jitsi.videobridge.transport.datachannel
 
 import org.jitsi.utils.logging2.Logger
 import org.jitsi.utils.logging2.createChildLogger
+import org.jitsi.videobridge.datachannel.DataChannel
+import org.jitsi.videobridge.datachannel.DataChannelStack
 import org.jitsi.videobridge.datachannel.protocol.DataChannelMessage
-import org.jitsi.videobridge.sctp.Ppid
-import org.jitsi.videobridge.sctp.Sid
+import org.jitsi.videobridge.transport.sctp.Ppid
+import org.jitsi.videobridge.transport.sctp.Sid
 import java.nio.ByteBuffer
+import java.util.concurrent.atomic.AtomicBoolean
 
 typealias OutgoingDataChannelDataSender = (ByteBuffer, Sid, Ppid) -> Unit
 typealias IncomingDataChannelTransportDataHandler = (DataChannelMessage) -> Unit
@@ -44,6 +47,8 @@ class DataChannelTransportStandalone(
             eventHandler?.connected(dataChannel)
         }
     }
+
+    private val closed = AtomicBoolean(false)
 
     @JvmField
     var dataSender: OutgoingDataChannelDataSender? = null
@@ -68,7 +73,7 @@ class DataChannelTransportStandalone(
     // When we change ep msg transport to use this layer instead of the datachannel,
     // it will use this method which will then send "through" the DataChannel
     // instance.
-    private fun send(data: ByteBuffer, sid: Int, ppid: Long): Int {
+    fun send(data: ByteBuffer, sid: Int, ppid: Long): Int {
         return dataSender?.let {
             it(data, sid, ppid)
             1
@@ -77,6 +82,13 @@ class DataChannelTransportStandalone(
 
     fun dataReceived(data: ByteArray, off: Int, length: Int, sid: Int, ppid: Long) {
         dataChannelStack.onIncomingDataChannelPacket(ByteBuffer.wrap(data, off, length), sid, ppid.toInt())
+    }
+
+    fun close() {
+        if (closed.compareAndSet(false, true)) {
+            //TODO: anything to do here?
+        }
+
     }
 
     interface DataChannelTransportEventHandler {

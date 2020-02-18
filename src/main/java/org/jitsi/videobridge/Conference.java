@@ -1199,6 +1199,7 @@ public class Conference
         }
         else
         {
+            logger.info("TEMP: no endpoint wanted packet");
             // No one wanted the packet, so the buffer is now free!
             ByteBufferPool.returnBuffer(packetInfo.getPacket().getBuffer());
         }

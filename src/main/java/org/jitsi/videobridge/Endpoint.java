@@ -17,8 +17,6 @@ package org.jitsi.videobridge;
 
 import kotlin.*;
 import kotlin.jvm.functions.*;
-import org.ice4j.Transport;
-import org.ice4j.ice.*;
 import org.jetbrains.annotations.*;
 import org.jitsi.nlj.*;
 import org.jitsi.nlj.format.*;
@@ -36,21 +34,24 @@ import org.jitsi.utils.*;
 import org.jitsi.utils.concurrent.*;
 import org.jitsi.utils.logging.*;
 import org.jitsi.utils.logging2.Logger;
+import org.jitsi.utils.queue.*;
 import org.jitsi.videobridge.cc.*;
 import org.jitsi.videobridge.datachannel.*;
 import org.jitsi.videobridge.datachannel.protocol.*;
-import org.jitsi.videobridge.dtls.*;
-import org.jitsi.videobridge.ice.*;
 import org.jitsi.videobridge.rest.*;
 import org.jitsi.videobridge.rest.root.colibri.debug.*;
 import org.jitsi.videobridge.sctp.*;
 import org.jitsi.videobridge.shim.*;
+import org.jitsi.videobridge.transport.*;
+import org.jitsi.videobridge.transport.datachannel.*;
+import org.jitsi.videobridge.transport.dtls.*;
+import org.jitsi.videobridge.transport.ice.*;
+import org.jitsi.videobridge.transport.sctp.*;
 import org.jitsi.videobridge.util.*;
 import org.jitsi.videobridge.xmpp.*;
 import org.jitsi.xmpp.extensions.colibri.*;
 import org.jitsi.xmpp.extensions.jingle.*;
 import org.jitsi_modified.impl.neomedia.rtp.*;
-import org.jitsi_modified.sctp4j.*;
 import org.json.simple.*;
 
 import java.beans.*;
@@ -59,9 +60,9 @@ import java.net.*;
 import java.nio.*;
 import java.time.*;
 import java.util.*;
-import java.util.function.Function;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
+import java.util.function.Function;
 import java.util.function.*;
 import java.util.stream.*;
 
@@ -80,14 +81,8 @@ public class Endpoint
         PropertyChangeListener,
         EncodingsManager.EncodingsUpdateListener
 {
-    /**
-     * The {@link SctpManager} instance we'll use to manage the SCTP connection
-     */
-    private SctpManager sctpManager;
-
-    private SctpTransportStandalone sctpTransportStandalone;
-
-    private DataChannelTransportStandalone dataChannelTransportStandalone;
+    // Whether or not we'll create an SCTP connection with this endpoint
+    private boolean sctpNegotiated = false;
 
     /**
      * The time at which this endpoint was created (in millis since epoch)
@@ -143,14 +138,14 @@ public class Endpoint
      */
     private final BandwidthProbing bandwidthProbing;
 
-    /**
-     * This {@link Endpoint}'s DTLS transport.
-     */
-    @NotNull
-    private final DtlsTransport dtlsTransport;
-
+    private final PacketInfoQueue outgoingSrtpPacketQueue;
+    static final CountingErrorHandler queueErrorCounter
+        = new CountingErrorHandler();
     private final IceTransportStandalone iceTransportStandalone;
     private final DtlsTransportStandalone dtlsTransportStandalone;
+    private SctpTransportStandalone sctpTransportStandalone;
+    private DataChannelTransportStandalone dataChannelTransportStandalone;
+
 
     /**
      * The {@link Transceiver} which handles receiving and sending of (S)RTP.
@@ -278,127 +273,30 @@ public class Endpoint
         bandwidthProbing.enabled = true;
         recurringRunnableExecutor.registerRecurringRunnable(bandwidthProbing);
 
-        dtlsTransport = new DtlsTransport(this, iceControlling, logger);
+        // We initialize these up front because we know (?) they'll always be created,
+        // and there's not a good trigger to create them otherwise (for example,
+        // we first refer to dtlsTransport in setTransportInfo).  Better way?
         iceTransportStandalone = new IceTransportStandalone(getID(), iceControlling, logger);
         dtlsTransportStandalone = new DtlsTransportStandalone(logger);
+        setUpIceTransport();
 
-        // Demux the data that comes out of ICE transport.  SRTP packets go
-        // straight to the transceiver, DTLS packets go through the DTLS
-        // transport.
-        iceTransportStandalone.dataHandler = datagramPacket -> {
-            if (DtlsTransportStandaloneKt.looksLikeDtls(datagramPacket))
-            {
-                dtlsTransportStandalone.dataReceived(datagramPacket);
-            }
-            else
-            {
-                // Non-DTLS packets are SRTP, which go straight to the transceiver
-                byte[] buf = ByteBufferPool.getBuffer(
-                    datagramPacket.getLength() +
-                        RtpPacket.BYTES_TO_LEAVE_AT_END_OF_PACKET +
-                        RtpPacket.BYTES_TO_LEAVE_AT_END_OF_PACKET
-                );
-                System.arraycopy(
-                    datagramPacket.getData(), datagramPacket.getOffset(),
-                    buf, RtpPacket.BYTES_TO_LEAVE_AT_START_OF_PACKET,
-                    datagramPacket.getLength());
-                Packet pkt = new UnparsedPacket(
-                    buf, RtpPacket.BYTES_TO_LEAVE_AT_START_OF_PACKET, datagramPacket.getLength()
-                );
-                PacketInfo pktInfo = new PacketInfo(pkt);
-                pktInfo.setReceivedTime(System.currentTimeMillis());
-                transceiver.handleIncomingPacket(pktInfo);
-            }
-            return Unit.INSTANCE;
-        };
+        outgoingSrtpPacketQueue = new PacketInfoQueue(
+            getClass().getSimpleName() + "-outgoing-packet-queue",
+            TaskPools.IO_POOL,
+            packetInfo -> {
+                iceTransportStandalone.send(new DatagramPacket(
+                    packetInfo.getPacket().getBuffer(),
+                    packetInfo.getPacket().getOffset(),
+                    packetInfo.getPacket().getLength()
+                ));
+                ByteBufferPool.returnBuffer(packetInfo.getPacket().getBuffer());
+                return true;
+            },
+            1024
+        );
+        outgoingSrtpPacketQueue.setErrorHandler(queueErrorCounter);
 
-        iceTransportStandalone.eventHandler = new IceTransportStandalone.IceTransportEventHandler() {
-            @Override
-            public void iceConnected()
-            {
-                getConference().getStatistics().hasIceSucceededEndpoint = true;
-
-                Videobridge.Statistics stats
-                    = getConference().getVideobridge().getStatistics();
-                stats.totalIceSucceeded.incrementAndGet();
-
-                // TODO: pass info about the selected pair to iceConnected so
-                //  we can do this stat
-//                CandidatePair selectedPair = iceComponent.getSelectedPair();
-//                RemoteCandidate remoteCandidate =
-//                    selectedPair == null ? null : selectedPair.getRemoteCandidate();
-//
-//                if (remoteCandidate == null)
-//                {
-//                    return;
-//                }
-//
-//                if (remoteCandidate.getTransport() == org.ice4j.Transport.TCP
-//                    || remoteCandidate.getTransport() == Transport.SSLTCP)
-//                {
-//                    stats.totalIceSucceededTcp.incrementAndGet();
-//                }
-
-                iceTransportStandalone.startReadingData();
-
-                TaskPools.IO_POOL.submit(() -> {
-                    try
-                    {
-                        dtlsTransportStandalone.startHandshake();
-                    }
-                    catch (Throwable t)
-                    {
-                        // TODO: shut everything down if this happens?
-                        logger.error("Error during DTLS negotiation, closing DTLS transport", t);
-                        dtlsTransportStandalone.close();
-                    }
-                });
-            }
-
-            @Override
-            public void iceFailed()
-            {
-                getConference().getVideobridge().getStatistics()
-                    .totalIceFailed.incrementAndGet();
-                getConference().getStatistics().hasIceFailedEndpoint = true;
-            }
-
-            @Override
-            public void iceConsentUpdated(@NotNull Instant time)
-            {
-                transceiver.getPacketIOActivity().setLastIceActivityInstant(time);
-            }
-        };
-
-        dtlsTransportStandalone.incomingDataHandler = (data, off, len) -> {
-            sctpTransportStandalone.dataReceived(data, off, len);
-            return Unit.INSTANCE;
-        };
-
-        dtlsTransportStandalone.dataSender = (data, off, len) -> {
-            //TODO: re-use a datagram packet
-            iceTransportStandalone.send(new DatagramPacket(data, off, len));
-            return Unit.INSTANCE;
-        };
-
-        dtlsTransportStandalone.eventHandler = new DtlsTransportStandalone.DtlsTransportEventHandler()
-        {
-            @Override
-            public void dtlsHandshakeCompleted(int chosenSrtpProfile, @NotNull TlsRole tlsRole, @NotNull byte[] keyingMaterial)
-            {
-                logger.info("DTLS handshake complete");
-                TaskPools.IO_POOL.submit(() -> {
-                    try
-                    {
-                        sctpTransportStandalone.connect();
-                    }
-                    catch (Throwable t)
-                    {
-                        logger.error("Error while attempting SCTP connection", t);
-                    }
-                });
-            }
-        };
+        transceiver.setOutgoingPacketHandler(outgoingSrtpPacketQueue::add);
 
         if (conference.includeInStatistics())
         {
@@ -509,10 +407,8 @@ public class Endpoint
      */
     private boolean isTransportConnected()
     {
-        // TODO: add connected state to new transports?  or should we keep
-        //  track of it all in endpoint based on the events we've received
-        //  from the transports?
-        return dtlsTransport.isConnected();
+        return Stream.of(iceTransportStandalone, dtlsTransportStandalone)
+            .allMatch(t -> t.getState().equals(TransportState.CONNECTED));
     }
 
     public double getRtt()
@@ -528,6 +424,7 @@ public class Endpoint
     {
         if (!isTransportConnected())
         {
+            logger.debug("TEMP: transport not connected, don't want packet");
             return false;
         }
 
@@ -634,7 +531,8 @@ public class Endpoint
      */
     void dtlsAppPacketReceived(PacketInfo dtlsAppPacket)
     {
-        sctpHandler.consume(dtlsAppPacket);
+        throw new RuntimeException("dtlsAppPacketReceived shouldn't be called");
+//        sctpHandler.consume(dtlsAppPacket);
     }
 
     /**
@@ -690,7 +588,7 @@ public class Endpoint
     {
         // TODO: track whether things have failed in the transports? or
         //  here in endpoint?
-        boolean iceFailed = dtlsTransport.hasIceFailed();
+        boolean iceFailed = iceTransportStandalone.getState().equals(TransportState.FAILED);
         if (iceFailed)
         {
             logger.warn("Allowing to expire because ICE failed.");
@@ -757,10 +655,6 @@ public class Endpoint
             {
                 messageTransport.close();
             }
-            if (sctpManager != null)
-            {
-                sctpManager.closeConnection();
-            }
             if (sctpTransportStandalone != null)
             {
                 sctpTransportStandalone.close();
@@ -774,9 +668,22 @@ public class Endpoint
         recurringRunnableExecutor.deRegisterRecurringRunnable(bandwidthProbing);
         getConference().encodingsManager.unsubscribe(this);
 
-        dtlsTransport.close();
-        iceTransportStandalone.close();
-        dtlsTransportStandalone.close();
+        if (iceTransportStandalone != null)
+        {
+            iceTransportStandalone.close();
+        }
+        if (dtlsTransportStandalone != null)
+        {
+            dtlsTransportStandalone.close();
+        }
+        if (sctpTransportStandalone != null)
+        {
+            sctpTransportStandalone.close();
+        }
+        if (dataChannelTransportStandalone != null)
+        {
+            dataChannelTransportStandalone.close();
+        }
 
         logger.info("Expired.");
     }
@@ -833,164 +740,14 @@ public class Endpoint
      */
     public void createSctpConnection()
     {
-        if (logger.isDebugEnabled())
-        {
-            logger.debug("Creating SCTP manager.");
-        }
-        sctpTransportStandalone = new SctpTransportStandalone(logger);
-        sctpTransportStandalone.dataSender = (data, off, len) -> {
-            dtlsTransportStandalone.send(data, off, len);
-            return Unit.INSTANCE;
-        };
-        sctpTransportStandalone.actAsSctpServer();
-        sctpTransportStandalone.eventHandler = new SctpTransportStandalone.SctpTransportEventHandler()
-        {
-            @Override
-            public void connected()
-            {
-                // Once SCTP connects successfully, we'll start up the data channel
-                dataChannelTransportStandalone = new DataChannelTransportStandalone(logger);
-                dataChannelTransportStandalone.dataSender = (data, sid, ppid) -> {
-                    // We always send messages ordered
-                    sctpTransportStandalone.send(data, true, sid, ppid.intValue());
-                    return Unit.INSTANCE;
-                };
-            }
-
-            @Override
-            public void disconnected()
-            {
-                logger.info("SCTP connection disconnected");
-            }
-        };
-        sctpTransportStandalone.incomingDataHandler = (data, sid, ssn, tsn, ppid, context, flags) -> {
-            dataChannelTransportStandalone.dataReceived(data, 0, data.length, sid, ppid);
-            return Unit.INSTANCE;
-        };
-
-        // Create the SctpManager and provide it a method for sending SCTP data
-        this.sctpManager = new SctpManager(
-                (data, offset, length) -> {
-                    PacketInfo packet
-                        = new PacketInfo(new UnparsedPacket(data, offset, length));
-                    dtlsTransport.sendDtlsData(packet);
-                    return 0;
-                },
-                logger
-        );
-        sctpHandler.setSctpManager(sctpManager);
-        // NOTE(brian): as far as I know we always act as the 'server' for sctp
-        // connections, but if not we can make which type we use dynamic
-        SctpServerSocket socket = sctpManager.createServerSocket();
-        socket.eventHandler = new SctpSocket.SctpSocketEventHandler()
-        {
-            @Override
-            public void onReady()
-            {
-                logger.info("SCTP connection is ready, creating the Data channel stack");
-                dataChannelStack
-                    = new DataChannelStack(
-                        (data, sid, ppid) -> socket.send(data, true, sid, ppid),
-                        logger
-                    );
-                dataChannelStack.onDataChannelStackEvents(dataChannel ->
-                {
-                    logger.info("Remote side opened a data channel.");
-                    Endpoint.this.messageTransport.setDataChannel(dataChannel);
-                });
-                dataChannelHandler.setDataChannelStack(dataChannelStack);
-                if (OPEN_DATA_LOCALLY)
-                {
-                    logger.info("Will open the data channel.");
-                    DataChannel dataChannel
-                        = dataChannelStack.createDataChannel(
-                            DataChannelProtocolConstants.RELIABLE,
-                            0,
-                            0,
-                            0,
-                            "default");
-                    Endpoint.this.messageTransport.setDataChannel(dataChannel);
-                    dataChannel.open();
-                }
-                else
-                {
-                    logger.info("Will wait for the remote side to open the data channel.");
-                }
-            }
-
-            @Override
-            public void onDisconnected()
-            {
-                logger.info("SCTP connection is disconnected.");
-            }
-        };
-        socket.dataCallback = (data, sid, ssn, tsn, ppid, context, flags) -> {
-            // We assume all data coming over SCTP will be datachannel data
-            DataChannelPacket dcp
-                    = new DataChannelPacket(data, 0, data.length, sid, (int)ppid);
-            // Post the rest of the task here because the current context is
-            // holding a lock inside the SctpSocket which can cause a deadlock
-            // if two endpoints are trying to send datachannel messages to one
-            // another (with stats broadcasting it can happen often)
-            TaskPools.IO_POOL.execute(
-                    () -> dataChannelHandler.consume(new PacketInfo(dcp)));
-        };
-        socket.listen();
-
-        // TODO: once sctp transport is done, start the socket handshake when
-        //  dtls connects
-        dtlsTransport.onDtlsHandshakeComplete(() -> {
-            // We don't want to block the thread calling
-            // onDtlsHandshakeComplete so run the socket acceptance in an IO
-            // pool thread
-            //TODO(brian): we should have a common 'notifier'/'publisher'
-            // interface that has notify/notifyAsync logic so we don't have
-            // to worry about this everywhere
-            TaskPools.IO_POOL.submit(() -> {
-                // FIXME: This runs forever once the socket is closed (
-                // accept never returns true).
-                logger.info("Attempting to establish SCTP socket connection");
-                int attempts = 0;
-                while (!socket.accept())
-                {
-                    attempts++;
-                    try
-                    {
-                        Thread.sleep(100);
-                    }
-                    catch (InterruptedException e)
-                    {
-                        break;
-                    }
-
-                    if (attempts > 100)
-                    {
-                        break;
-                    }
-                }
-                if (logger.isDebugEnabled())
-                {
-                    logger.debug("SCTP socket " + socket.hashCode() +
-                            " accepted connection.");
-                }
-            });
-            TaskPools.SCHEDULED_POOL.schedule(() -> {
-                if (!isExpired()) {
-                    AbstractEndpointMessageTransport t = getMessageTransport();
-                    if (t != null)
-                    {
-                        if (!t.isConnected())
-                        {
-                            logger.error("EndpointMessageTransport still not connected.");
-                            getConference()
-                                .getVideobridge()
-                                .getStatistics()
-                                .numEndpointsNoMessageTransportAfterDelay.incrementAndGet();
-                        }
-                    }
-                }
-            }, 30, TimeUnit.SECONDS);
-        });
+        logger.info("SCTP negotiated, will start once DTLS connects");
+        //TODO: race here if DTLS had already finished
+        sctpNegotiated = true;
+//        if (logger.isDebugEnabled())
+//        {
+//            logger.debug("Creating SCTP manager.");
+//        }
+//        setupSctpTransport();
     }
 
     /**
@@ -1001,9 +758,7 @@ public class Endpoint
      */
     public boolean acceptWebSocket(String password)
     {
-        String icePassword = getIcePassword();
-        // TODO: will become:
-        // String icePassword = iceTransportStandalone.getIcePassword();
+        String icePassword = iceTransportStandalone.getIcePassword();
         if (icePassword == null || !icePassword.equals(password))
         {
             logger.warn("Incoming web socket request with an invalid password." +
@@ -1058,16 +813,6 @@ public class Endpoint
         {
             messageTransport.onWebSocketText(ws, message);
         }
-    }
-
-    /**
-     * @return the password of the ICE Agent associated with this
-     * {@link Endpoint}.
-     */
-    // TODO: this method will go away
-    private String getIcePassword()
-    {
-        return dtlsTransport.getIcePassword();
     }
 
     /**
@@ -1145,34 +890,32 @@ public class Endpoint
      */
     public void setTransportInfo(IceUdpTransportPacketExtension transportInfo)
     {
-        dtlsTransport.startConnectivityEstablishment(transportInfo);
+        logger.info("Setting transport information: " + transportInfo.toXML());
+        List<DtlsFingerprintPacketExtension> fingerprintExtensions
+            = transportInfo.getChildExtensionsOfType(DtlsFingerprintPacketExtension.class);
+        Map<String, String> remoteFingerprints = new HashMap<>();
+        fingerprintExtensions.forEach(fingerprintExtension -> {
+            if (fingerprintExtension.getHash() != null
+                && fingerprintExtension.getFingerprint() != null)
+            {
+                remoteFingerprints.put(
+                    fingerprintExtension.getHash(),
+                    fingerprintExtension.getFingerprint());
+            }
+            else
+            {
+                logger.info("Ignoring empty DtlsFingerprint extension: "
+                    + transportInfo.toXML());
+            }
+        });
+        dtlsTransportStandalone.setRemoteFingerprints(remoteFingerprints);
+        fingerprintExtensions.stream()
+            .map(DtlsFingerprintPacketExtension::getSetup)
+            .filter(Objects::nonNull)
+            .findFirst()
+            .ifPresent(dtlsTransportStandalone::setSetupAttribute);
 
-        // TODO: will be replaced with:
-//        List<DtlsFingerprintPacketExtension> fingerprintExtensions
-//            = transportInfo.getChildExtensionsOfType(DtlsFingerprintPacketExtension.class);
-//        Map<String, String> remoteFingerprints = new HashMap<>();
-//        fingerprintExtensions.forEach(fingerprintExtension -> {
-//            if (fingerprintExtension.getHash() != null
-//                && fingerprintExtension.getFingerprint() != null)
-//            {
-//                remoteFingerprints.put(
-//                    fingerprintExtension.getHash(),
-//                    fingerprintExtension.getFingerprint());
-//            }
-//            else
-//            {
-//                logger.info("Ignoring empty DtlsFingerprint extension: "
-//                    + transportInfo.toXML());
-//            }
-//        });
-//        dtlsTransportStandalone.setRemoteFingerprints(remoteFingerprints);
-//        fingerprintExtensions.stream()
-//            .map(DtlsFingerprintPacketExtension::getSetup)
-//            .filter(Objects::nonNull)
-//            .findFirst()
-//            .ifPresent(dtlsTransportStandalone::setSetupAttribute);
-//
-//        iceTransportStandalone.startConnectivityEstablishment(transportInfo);
+        iceTransportStandalone.startConnectivityEstablishment(transportInfo);
     }
 
     /**
@@ -1324,12 +1067,12 @@ public class Endpoint
     @Override
     public void describe(ColibriConferenceIQ.ChannelBundle channelBundle)
     {
-        dtlsTransport.describe(channelBundle);
-        // TODO: will be replaced with:
-//        IceUdpTransportPacketExtension iceUdpTransportPacketExtension =
-//            new IceUdpTransportPacketExtension();
-//        iceTransportStandalone.describe(iceUdpTransportPacketExtension);
-//        dtlsTransportStandalone.describe(iceUdpTransportPacketExtension);
+        IceUdpTransportPacketExtension iceUdpTransportPacketExtension =
+            new IceUdpTransportPacketExtension();
+        iceTransportStandalone.describe(iceUdpTransportPacketExtension);
+        dtlsTransportStandalone.describe(iceUdpTransportPacketExtension);
+        logger.info("Transport description:\n " + iceUdpTransportPacketExtension.toXML());
+        channelBundle.setTransport(iceUdpTransportPacketExtension);
     }
 
 
@@ -1537,6 +1280,199 @@ public class Endpoint
         return transceiver;
     }
 
+    private void setUpIceTransport()
+    {
+        //TODO: not sure where this should go, since it refers to dtlsTransport
+        // Demux the data that comes out of ICE transport.  SRTP packets go
+        // straight to the transceiver, DTLS packets go through the DTLS
+        // transport.
+        iceTransportStandalone.dataHandler = datagramPacket -> {
+            logger.info("TEMP: got data from ICE transport");
+            if (DtlsTransportStandaloneKt.looksLikeDtls(datagramPacket))
+            {
+                logger.info("TEMP: DTLS data, sending to dtls transport");
+                dtlsTransportStandalone.dataReceived(datagramPacket);
+            }
+            else
+            {
+                logger.info("TEMP: non-DTLS data, sending to transceiver");
+                // Non-DTLS packets are SRTP, which go straight to the transceiver
+                byte[] buf = ByteBufferPool.getBuffer(
+                    datagramPacket.getLength() +
+                        RtpPacket.BYTES_TO_LEAVE_AT_END_OF_PACKET +
+                        RtpPacket.BYTES_TO_LEAVE_AT_END_OF_PACKET
+                );
+                System.arraycopy(
+                    datagramPacket.getData(), datagramPacket.getOffset(),
+                    buf, RtpPacket.BYTES_TO_LEAVE_AT_START_OF_PACKET,
+                    datagramPacket.getLength());
+                Packet pkt = new UnparsedPacket(
+                    buf, RtpPacket.BYTES_TO_LEAVE_AT_START_OF_PACKET, datagramPacket.getLength()
+                );
+                PacketInfo pktInfo = new PacketInfo(pkt);
+                pktInfo.setReceivedTime(System.currentTimeMillis());
+                transceiver.handleIncomingPacket(pktInfo);
+            }
+            return Unit.INSTANCE;
+        };
+
+        iceTransportStandalone.eventHandler = new IceTransportStandalone.IceTransportEventHandler()
+        {
+            @Override
+            public void iceConnected()
+            {
+                getConference().getStatistics().hasIceSucceededEndpoint = true;
+
+                Videobridge.Statistics stats
+                    = getConference().getVideobridge().getStatistics();
+                stats.totalIceSucceeded.incrementAndGet();
+
+                // TODO: pass info about the selected pair to iceConnected so
+                //  we can do this stat
+//                CandidatePair selectedPair = iceComponent.getSelectedPair();
+//                RemoteCandidate remoteCandidate =
+//                    selectedPair == null ? null : selectedPair.getRemoteCandidate();
+//
+//                if (remoteCandidate == null)
+//                {
+//                    return;
+//                }
+//
+//                if (remoteCandidate.getTransport() == org.ice4j.Transport.TCP
+//                    || remoteCandidate.getTransport() == Transport.SSLTCP)
+//                {
+//                    stats.totalIceSucceededTcp.incrementAndGet();
+//                }
+
+                iceTransportStandalone.startReadingData();
+
+                // TODO: should this go before 'startReadingData'?
+                setUpDtlsTransport();
+            }
+
+            @Override
+            public void iceFailed()
+            {
+                getConference().getVideobridge().getStatistics()
+                    .totalIceFailed.incrementAndGet();
+                getConference().getStatistics().hasIceFailedEndpoint = true;
+            }
+
+            @Override
+            public void iceConsentUpdated(@NotNull Instant time)
+            {
+                transceiver.getPacketIOActivity().setLastIceActivityInstant(time);
+            }
+        };
+
+    }
+
+    private void setUpDtlsTransport()
+    {
+        dtlsTransportStandalone.eventHandler = new DtlsTransportStandalone.DtlsTransportEventHandler()
+        {
+            @Override
+            public void dtlsHandshakeCompleted(int chosenSrtpProfile, @NotNull TlsRole tlsRole, @NotNull byte[] keyingMaterial)
+            {
+                logger.info("DTLS handshake complete");
+                setSrtpInformation(chosenSrtpProfile, tlsRole, keyingMaterial);
+                if (sctpNegotiated)
+                {
+                    setupSctpTransport();
+                }
+            }
+        };
+
+        dtlsTransportStandalone.dataSender = (data, off, len) -> {
+            //TODO: re-use a datagram packet?
+            iceTransportStandalone.send(new DatagramPacket(data, off, len));
+            return Unit.INSTANCE;
+        };
+
+        TaskPools.IO_POOL.submit(() -> {
+            try
+            {
+                dtlsTransportStandalone.startHandshake();
+            }
+            catch (Throwable t)
+            {
+                // TODO: shut everything down if this happens?
+                logger.error("Error during DTLS negotiation, closing DTLS transport", t);
+                dtlsTransportStandalone.close();
+            }
+        });
+    }
+
+    private void setupSctpTransport()
+    {
+        logger.info("Setting up SCTP transport");
+        sctpTransportStandalone = new SctpTransportStandalone(logger);
+        sctpTransportStandalone.eventHandler = new SctpTransportStandalone.SctpTransportEventHandler()
+        {
+            @Override
+            public void connected()
+            {
+                // Once SCTP connects successfully, we'll start up the data channel
+                setupDataChannelTransport();
+            }
+
+            @Override
+            public void disconnected()
+            {
+                logger.info("SCTP connection disconnected");
+            }
+        };
+        // Wire DTLS app packets to SCTP transport
+        dtlsTransportStandalone.incomingDataHandler = (data, off, len) -> {
+            sctpTransportStandalone.dataReceived(data, off, len);
+            return Unit.INSTANCE;
+        };
+        // Wire SCTP to send via DTLS transport
+        sctpTransportStandalone.dataSender = (data, off, len) -> {
+            dtlsTransportStandalone.send(data, off, len);
+            return Unit.INSTANCE;
+        };
+        sctpTransportStandalone.actAsSctpServer();
+
+        TaskPools.IO_POOL.submit(() -> {
+            try
+            {
+                sctpTransportStandalone.connect();
+            }
+            catch (Throwable t)
+            {
+                logger.error("Error while attempting SCTP connection", t);
+            }
+        });
+    }
+
+    private void setupDataChannelTransport()
+    {
+        logger.info("Setting up datachannel transport");
+        dataChannelTransportStandalone = new DataChannelTransportStandalone(logger);
+
+        dataChannelTransportStandalone.eventHandler = new DataChannelTransportStandalone.DataChannelTransportEventHandler()
+        {
+            @Override
+            public void connected(@NotNull DataChannel channel)
+            {
+                messageTransport.setDataChannel(channel);
+            }
+        };
+
+        // Wire SCTP app packets to DataChannel transport
+        sctpTransportStandalone.incomingDataHandler = (data, sid, ssn, tsn, ppid, context, flags) -> {
+            dataChannelTransportStandalone.dataReceived(data, 0, data.length, sid, ppid);
+            return Unit.INSTANCE;
+        };
+        // Wire DataChannel to send via SCTP transport
+        dataChannelTransportStandalone.dataSender = (data, sid, ppid) -> {
+            // We always send messages ordered
+            sctpTransportStandalone.send(data, true, sid, ppid.intValue());
+            return Unit.INSTANCE;
+        };
+    }
+
     /**
      * {@inheritDoc}
      */
@@ -1551,7 +1487,8 @@ public class Endpoint
         //debugState.put("messageTransport", messageTransport.getDebugState());
         debugState.put("bitrateController", bitrateController.getDebugState());
         debugState.put("bandwidthProbing", bandwidthProbing.getDebugState());
-        debugState.put("dtlsTransport", dtlsTransport.getDebugState());
+        //TODO: add debug states for new transports
+//        debugState.put("dtlsTransport", dtlsTransport.getDebugState());
         debugState.put("transceiver", transceiver.getNodeStats().toJson());
         debugState.put("acceptAudio", acceptAudio);
         debugState.put("acceptVideo", acceptVideo);

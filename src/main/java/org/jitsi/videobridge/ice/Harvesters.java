@@ -17,13 +17,12 @@
 package org.jitsi.videobridge.ice;
 
 import org.ice4j.ice.harvest.*;
-import org.jitsi.service.configuration.*;
 import org.jitsi.utils.logging2.*;
 
 import java.io.*;
 import java.util.*;
 
-import static org.jitsi.videobridge.ice.IceConfig.*;
+import static org.jitsi.videobridge.transport.ice.IceConfig.*;
 
 public class Harvesters
 {
@@ -57,13 +56,13 @@ public class Harvesters
      * The single <tt>TcpHarvester</tt> instance for the
      * application.
      */
-    static TcpHarvester tcpHarvester = null;
+    public static TcpHarvester tcpHarvester = null;
 
     /**
      * The <tt>SinglePortUdpHarvester</tt>s which will be appended to ICE
      * <tt>Agent</tt>s managed by <tt>IceTransport</tt> instances.
      */
-    static List<SinglePortUdpHarvester> singlePortHarvesters = null;
+    public static List<SinglePortUdpHarvester> singlePortHarvesters = null;
 
 
     /**
@@ -71,7 +70,7 @@ public class Harvesters
      * <tt>IceTransport</tt> instances, that is
      * {@link #tcpHarvester} and {@link #singlePortHarvesters}.
      */
-    static void initializeStaticConfiguration()
+    public static void initializeStaticConfiguration()
     {
         synchronized (Harvesters.class)
         {

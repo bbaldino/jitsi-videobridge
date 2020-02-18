@@ -14,15 +14,16 @@
  * limitations under the License.
  */
 
-package org.jitsi.videobridge.sctp
+package org.jitsi.videobridge.transport.sctp
 
 import org.jitsi.nlj.PacketInfo
 import org.jitsi.rtp.UnparsedPacket
 import org.jitsi.utils.logging2.Logger
 import org.jitsi.utils.logging2.cdebug
 import org.jitsi.utils.logging2.createChildLogger
-import org.jitsi.videobridge.dtls.Length
-import org.jitsi.videobridge.dtls.Offset
+import org.jitsi.videobridge.sctp.SctpManager
+import org.jitsi.videobridge.transport.dtls.Length
+import org.jitsi.videobridge.transport.dtls.Offset
 import org.jitsi_modified.sctp4j.SctpDataCallback
 import org.jitsi_modified.sctp4j.SctpDataSender
 import org.jitsi_modified.sctp4j.SctpServerSocket

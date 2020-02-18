@@ -33,7 +33,7 @@ import org.jitsi.xmpp.extensions.jingle.CandidateType;
 import org.json.simple.*;
 import org.osgi.framework.*;
 
-import static org.jitsi.videobridge.ice.IceConfig.*;
+import static org.jitsi.videobridge.transport.ice.IceConfig.*;
 
 /**
  * Implements the ICE transport.

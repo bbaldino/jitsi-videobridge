@@ -90,7 +90,10 @@ public class Health
 
             //endpoints.add(endpoint);
 
-            endpoint.createSctpConnection();
+            //TODO: what are we trying to accomplish by creating this here?
+            // we're not doing ice/dtls so i don't think this was doing anything
+            // meaningful
+//            endpoint.createSctpConnection();
         }
 
 

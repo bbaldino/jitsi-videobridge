@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package org.jitsi.videobridge.dtls
+package org.jitsi.videobridge.transport.dtls
 
 import org.jitsi.nlj.PacketInfo
 import org.jitsi.nlj.dtls.DtlsClient
@@ -24,8 +24,11 @@ import org.jitsi.nlj.srtp.TlsRole
 import org.jitsi.rtp.UnparsedPacket
 import org.jitsi.rtp.extensions.unsigned.toPositiveInt
 import org.jitsi.utils.logging2.Logger
+import org.jitsi.utils.logging2.cdebug
 import org.jitsi.utils.logging2.createChildLogger
 import org.jitsi.videobridge.aspect.onlyIf
+import org.jitsi.videobridge.transport.Transport
+import org.jitsi.videobridge.transport.TransportState
 import org.jitsi.videobridge.util.TaskPools
 import org.jitsi.xmpp.extensions.jingle.DtlsFingerprintPacketExtension
 import org.jitsi.xmpp.extensions.jingle.IceUdpTransportPacketExtension
@@ -42,19 +45,31 @@ typealias Fingerprint = String
 
 class DtlsTransportStandalone(
     parentLogger: Logger
-) {
+) : Transport {
     private val logger = createChildLogger(parentLogger)
 
     private val dtlsStack = DtlsStack(logger).apply {
         onOutgoingProtocolData { pkts ->
             pkts.forEach { pkt ->
-                dataSender?.invoke(pkt.packet.buffer, pkt.packet.offset, pkt.packet.length)
+                dataSender?.let {
+                    logger.cdebug { "Sending out DTLS data" }
+                    it(pkt.packet.buffer, pkt.packet.offset, pkt.packet.length)
+                } ?: run {
+                    logger.cdebug { "Data sender null, dropping outgoing DTLS data" }
+                }
             }
         }
         onHandshakeComplete { chosenSrtpProfile, tlsRole, keyingMaterial ->
-            eventHandler?.dtlsHandshakeCompleted(chosenSrtpProfile, tlsRole, keyingMaterial)
+            logger.cdebug { "Handshake completed" }
+            state = TransportState.CONNECTED
+            eventHandler?.dtlsHandshakeCompleted(chosenSrtpProfile, tlsRole, keyingMaterial) ?: run {
+                logger.cdebug { "Event handler null" }
+            }
         }
     }
+
+    override var state: TransportState = TransportState.UNITITALIZED
+        private set
 
     @JvmField
     var incomingDataHandler: IncomingDtlsTransportDataHandler? = null
@@ -72,10 +87,12 @@ class DtlsTransportStandalone(
             "active" -> {
                 logger.info("The remote side is acting as DTLS client, we'll act as server")
                 dtlsStack.actAsServer()
+                logger.info("DONE")
             }
             "passive" -> {
                 logger.info("The remote side is acting as DTLS server, we'll act as client")
                 dtlsStack.actAsClient()
+                logger.info("DONE, dtlsStack (${System.identityHashCode(dtlsStack)}) role set? ${dtlsStack.role}")
             }
             else -> logger.error("The remote side sent an unrecognized DTLS setup value: $setupAttr")
         }
@@ -94,14 +111,17 @@ class DtlsTransportStandalone(
 
     fun startHandshake() {
         logger.info("Starting DTLS.")
+        logger.info("dtlsStack (${System.identityHashCode(dtlsStack)}) role set? ${dtlsStack.role}")
         if (dtlsStack.role == null) {
             logger.warn("Starting the DTLS stack before it knows its role")
         }
+        state = TransportState.PENDING
         dtlsStack.start()
     }
 
     //TODO: create a 'DtlsPacket' for some type safety?
     fun dataReceived(data: DatagramPacket) {
+        logger.cdebug { "Received data" }
         //TODO: change the API of DTLS stack...right now it's oriented around
         // packet info and pipelines (even though it isn't involved in a pipeline
         // directly).  Ideally the stack would look more like the transports:
@@ -110,12 +130,18 @@ class DtlsTransportStandalone(
         // callback
         val packetInfo = PacketInfo(UnparsedPacket(data.data, data.offset, data.length))
         val dtlsAppPackets = dtlsStack.processIncomingProtocolData(packetInfo)
-        dtlsAppPackets.forEach {
-            incomingDataHandler?.invoke(it.packet.buffer, it.packet.offset, it.packet.length)
+        dtlsAppPackets.forEach { appData ->
+            incomingDataHandler?.let {
+                logger.cdebug { "Forwarding data to handler" }
+                it(appData.packet.buffer, appData.packet.offset, appData.packet.length)
+            } ?: run {
+                logger.cdebug { "Handler is null, dropping data" }
+            }
         }
     }
 
     fun send(data: ByteArray, off: Int, len: Int) {
+        logger.cdebug { "Sending outgoing DTLS data through DTLS stack" }
         //TODO: see comment in #dataReceived about dtlsStack API
         val packetInfo = PacketInfo(UnparsedPacket(data, off, len))
         dtlsStack.sendApplicationData(packetInfo)
@@ -138,6 +164,7 @@ class DtlsTransportStandalone(
 
     fun close() {
         if (closed.compareAndSet(false, true)) {
+            state = TransportState.CLOSED
             // TODO: any cleanup to do here?
         }
     }
@@ -149,5 +176,11 @@ class DtlsTransportStandalone(
 
 // TODO: move these
 private val DTLS_RANGE = 20..63
-fun DatagramPacket.looksLikeDtls(): Boolean =
-    data[offset].toPositiveInt() in DTLS_RANGE
+fun DatagramPacket.looksLikeDtls(): Boolean {
+    return if (length < 1) {
+        false
+    } else {
+        data[offset].toPositiveInt() in DTLS_RANGE
+    }
+
+}
