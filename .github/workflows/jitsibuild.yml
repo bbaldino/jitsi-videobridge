@@ -10,7 +10,7 @@ jobs:
     name: Jitsi build
     runs-on: ubuntu-latest
     steps:
-	  - name: Cache Maven dependencies
+      - name: Cache Maven dependencies
         uses: actions/cache@v1
         with:
           path: ~/.m2
