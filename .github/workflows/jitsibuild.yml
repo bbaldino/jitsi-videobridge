@@ -11,6 +11,11 @@ jobs:
     name: Jitsi build
     runs-on: ubuntu-latest
     steps:
+	  - name: Cache Maven dependencies
+        uses: actions/cache@v1
+        with:
+          path: ~/.m2
+          key: m2  
       - uses: bbaldino/jitsi-ga-test@HEAD
         env:
             GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
