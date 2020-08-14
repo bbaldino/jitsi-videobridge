@@ -2,8 +2,7 @@ name: CI
 
 on:
   pull_request:
-    branches: [ master ]
-  issue_comment:
+    types: [opened, edited, synchronize ]
     branches: [ master ]
     
 jobs:
