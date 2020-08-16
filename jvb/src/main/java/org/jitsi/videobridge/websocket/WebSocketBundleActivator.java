@@ -88,7 +88,7 @@ public class WebSocketBundleActivator
         // regardless of whether the Servlet actually did anything.
         // Consequently, it is advisable to keep Servlets as the last Handler.
         Handler servletHandler
-            = initializeServletHandler(bundleContext, server);
+            = initializeServletHandler(server);
 
         if (servletHandler != null)
             handlers.add(servletHandler);
@@ -107,9 +107,7 @@ public class WebSocketBundleActivator
      * @return a new {@code ServletHandler} instance which is to map requests to
      * servlets for {@code server}
      */
-    private Handler initializeServletHandler(
-            BundleContext bundleContext,
-            Server server)
+    private Handler initializeServletHandler(Server server)
     {
         ServletHolder servletHolder;
         ServletContextHandler servletContextHandler
@@ -120,7 +118,6 @@ public class WebSocketBundleActivator
             = new ColibriWebSocketService(isTls());
         servletHolder
             = colibriWebSocketService.initializeColibriWebSocketServlet(
-                    bundleContext,
                     servletContextHandler);
         if (servletHolder != null)
         {

@@ -117,15 +117,12 @@ public class ColibriWebSocketService
      * Initializes a {@link ColibriWebSocketServlet} and adds it to the
      * specified {@link ServletContextHandler}.
      *
-     * @param bundleContext the {@code BundleContext} in which the new instance
-     * is to be initialized
      * @param servletContextHandler the {@code ServletContextHandler} to add the
      * new instance to
      * @return the {@link ServletHolder} which holds the newly initialized
      * servlet, or {@code null} if no servlet was initialized.
      */
     ServletHolder initializeColibriWebSocketServlet(
-        BundleContext bundleContext,
         ServletContextHandler servletContextHandler)
     {
         ServletHolder holder = null;
@@ -136,7 +133,7 @@ public class ColibriWebSocketService
                 + baseUrl);
             holder = new ServletHolder();
 
-            holder.setServlet(new ColibriWebSocketServlet(bundleContext, this));
+            holder.setServlet(new ColibriWebSocketServlet(this));
 
             // The rules for mappings of the Servlet specification do not allow
             // path matching in the middle of the path.

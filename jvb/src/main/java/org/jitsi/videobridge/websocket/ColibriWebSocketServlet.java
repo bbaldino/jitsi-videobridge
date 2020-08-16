@@ -35,24 +35,16 @@ class ColibriWebSocketServlet
     private static final Logger logger = new LoggerImpl(ColibriWebSocketServlet.class.getName());
 
     /**
-     * The {@link BundleContext} in which this instance is running.
-     */
-    private BundleContext bundleContext;
-
-    /**
      * The {@link ColibriWebSocketService} instance which created this servlet.
      */
-    private ColibriWebSocketService service;
+    private final ColibriWebSocketService service;
 
     /**
      * Initializes a new {@link ColibriWebSocketServlet} instance.
-     * @param bundleContext the {@code BundleContext} in which the new instance
-     * is to be initialized
+     * @param service the {@link ColibriWebSocketService} to be used
      */
-    ColibriWebSocketServlet(BundleContext bundleContext,
-                            ColibriWebSocketService service)
+    ColibriWebSocketServlet(ColibriWebSocketService service)
     {
-        this.bundleContext = bundleContext;
         this.service = service;
     }
 
@@ -201,6 +193,6 @@ class ColibriWebSocketServlet
      */
     Videobridge getVideobridge()
     {
-       return ServiceUtils2.getService(bundleContext, Videobridge.class);
+        return VideobridgeSupplierKt.singleton.get();
     }
 }
