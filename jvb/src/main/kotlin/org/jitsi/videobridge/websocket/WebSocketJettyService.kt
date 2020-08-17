@@ -20,6 +20,7 @@ import org.eclipse.jetty.server.Handler
 import org.eclipse.jetty.server.Server
 import org.eclipse.jetty.server.handler.HandlerList
 import org.eclipse.jetty.servlet.ServletContextHandler
+import org.jitsi.rest.AbstractJettyBundleActivator
 import org.jitsi.rest.AbstractJettyService
 
 /**
@@ -30,7 +31,7 @@ import org.jitsi.rest.AbstractJettyService
  * we should rename this to something more generic.
  */
 class WebSocketJettyService : AbstractJettyService(
-    WebSocketBundleActivator.JETTY_PROPERTY_PREFIX, "videobridge.http-servers.public"
+    JETTY_PROPERTY_PREFIX, "videobridge.http-servers.public"
 ) {
     override fun initializeHandlerList(server: Server): Handler {
         // XXX ServletContextHandler and/or ServletHandler are not cool because
@@ -50,3 +51,9 @@ class WebSocketJettyService : AbstractJettyService(
         }
     }
 }
+
+/**
+ * The prefix of the property names for the Jetty instance managed by
+ * this [AbstractJettyBundleActivator].
+ */
+private val JETTY_PROPERTY_PREFIX = "org.jitsi.videobridge.rest"
