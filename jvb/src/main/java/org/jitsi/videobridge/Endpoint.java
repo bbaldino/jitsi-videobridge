@@ -1062,8 +1062,7 @@ public class Endpoint
         IceUdpTransportPacketExtension iceUdpTransportPacketExtension = new IceUdpTransportPacketExtension();
         iceTransport.describe(iceUdpTransportPacketExtension);
         dtlsTransport.describe(iceUdpTransportPacketExtension);
-        ColibriWebSocketService colibriWebSocketService
-                = ServiceUtils2.getService(getConference().getBundleContext(), ColibriWebSocketService.class);
+        ColibriWebSocketService colibriWebSocketService = ColibriWebSocketServiceSupplier.singleton.get();
         if (colibriWebSocketService != null)
         {
             String wsUrl = colibriWebSocketService.getColibriWebSocketUrl(

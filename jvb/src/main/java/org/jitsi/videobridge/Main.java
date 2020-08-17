@@ -25,6 +25,7 @@ import org.jitsi.videobridge.health.*;
 import org.jitsi.videobridge.octo.*;
 import org.jitsi.videobridge.osgi.*;
 import org.jitsi.videobridge.stats.*;
+import org.jitsi.videobridge.websocket.*;
 import org.jitsi.videobridge.xmpp.*;
 
 /**
@@ -107,6 +108,9 @@ public class Main
         }
         HealthCheckServiceSupplierKt.singleton.get().start();
 
+        WebSocketJettyService websocketJettyService = new WebSocketJettyService();
+        websocketJettyService.start();
+
         Logger logger = new LoggerImpl("org.jitsi.videobridge.Main");
 
         Runtime.getRuntime().addShutdownHook(new Thread(() ->
@@ -124,6 +128,8 @@ public class Main
             }
 
             HealthCheckServiceSupplierKt.singleton.get().stop();
+
+            websocketJettyService.stop();
         }));
 
         ComponentMain main = new ComponentMain();

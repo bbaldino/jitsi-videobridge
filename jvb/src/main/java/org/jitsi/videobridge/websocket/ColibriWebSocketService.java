@@ -51,11 +51,13 @@ public class ColibriWebSocketService
      * Initializes a {@link ColibriWebSocketService} in a specific
      * {@link BundleContext}.
      *
-     * @param tls whether to use "ws" or "wss" in advertised URLs in the absence
-     * of configuration which overrides it (see
-     * {@link WebsocketServiceConfig#getUseTls()}).
+     * @param webserverIsTls whether or not the web server on which the websocket
+     *                       endpoint will be hosted is using TLS.  We'll default
+     *                       the websocket protocol based on this value (but allow
+     *                       it to be overridden, see
+     *                       {@link WebsocketServiceConfig#getUseTls()}).
      */
-    public ColibriWebSocketService(boolean tls)
+    public ColibriWebSocketService(boolean webserverIsTls)
     {
         // The domain name is currently a required property.
         if (config.getEnabled())
@@ -65,13 +67,13 @@ public class ColibriWebSocketService
             // instance, but we allow for the configuration via properties
             // to override it since certain use-cases require it.
             Boolean tlsProp = config.getUseTls();
-            tls = tlsProp != null ? tlsProp : tls;
+            boolean useTls = tlsProp != null ? tlsProp : webserverIsTls;
 
             // The server ID is not critical, just use a default string
             // unless configured.
             serverId = config.getServerId();
 
-            String scheme = tls ? "wss://" : "ws://";
+            String scheme = useTls ? "wss://" : "ws://";
             baseUrl = scheme + domain + COLIBRI_WS_PATH + serverId + "/";
             logger.info("Using base URL: " + baseUrl);
         }
