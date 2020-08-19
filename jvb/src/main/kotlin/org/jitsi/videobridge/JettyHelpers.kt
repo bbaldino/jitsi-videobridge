@@ -1,3 +1,4 @@
+@file:JvmName("JettyHelpers")
 /*
  * Copyright @ 2018 - present 8x8, Inc.
  *
@@ -25,6 +26,7 @@ import org.eclipse.jetty.server.SslConnectionFactory
 import org.eclipse.jetty.servlet.ServletContextHandler
 import org.eclipse.jetty.servlet.ServletHolder
 import org.eclipse.jetty.util.ssl.SslContextFactory
+import org.jitsi.rest.JettyBundleActivatorConfig
 import java.nio.file.Paths
 
 fun createJettyServer(
@@ -89,6 +91,23 @@ fun createSecureJettyServer(
     }
     server.addConnector(connector)
     return server
+}
+
+fun createServer(config: JettyBundleActivatorConfig): Server {
+    return if (config.keyStorePath != null) {
+        createSecureJettyServer(
+            config.tlsPort,
+            config.keyStorePath!!,
+            config.host,
+            config.keyStorePassword,
+            config.needClientAuth
+        )
+    } else {
+        createJettyServer(
+            config.port,
+            config.host
+        )
+    }
 }
 
 val Server.servletContextHandler: ServletContextHandler?

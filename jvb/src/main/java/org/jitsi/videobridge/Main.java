@@ -17,7 +17,6 @@ package org.jitsi.videobridge;
 
 import kotlin.jvm.functions.*;
 import org.eclipse.jetty.server.*;
-import org.eclipse.jetty.servlet.*;
 import org.jetbrains.annotations.*;
 import org.jitsi.cmd.*;
 import org.jitsi.meet.*;
@@ -112,31 +111,15 @@ public class Main
         HealthCheckServiceSupplierKt.singleton.get().start();
 
         JettyBundleActivatorConfig publicServerConfig = new JettyBundleActivatorConfig(
-            "",
+            "org.jitsi.videobridge.rest",
             "videobridge.http-servers.public"
         );
-        Server publicServer;
-        if (publicServerConfig.getKeyStorePath() != null)
-        {
-            publicServer = JettyKt.createSecureJettyServer(
-                publicServerConfig.getTlsPort(),
-                publicServerConfig.getHost(),
-                publicServerConfig.getKeyStorePath(),
-                publicServerConfig.getKeyStorePassword(),
-                publicServerConfig.getNeedClientAuth()
-            );
-        }
-        else
-        {
-            publicServer = JettyKt.createJettyServer(
-                publicServerConfig.getPort(),
-                publicServerConfig.getHost()
-            );
-        }
+        final Server publicServer = JettyHelpers.createServer(publicServerConfig);
 
-        ColibriWebSocketService colibriWebSocketService = new ColibriWebSocketService(publicServerConfig.getKeyStorePath() != null);
+        ColibriWebSocketService colibriWebSocketService =
+            new ColibriWebSocketService(publicServerConfig.getKeyStorePath() != null);
         ColibriWebSocketServiceSupplier.singleton.setColibriWebsocketService(colibriWebSocketService);
-        colibriWebSocketService.registerServlet(JettyKt.getServletContextHandler(publicServer));
+        colibriWebSocketService.registerServlet(JettyHelpers.getServletContextHandler(publicServer));
         publicServer.start();
 
         Logger logger = new LoggerImpl("org.jitsi.videobridge.Main");
