@@ -26,7 +26,7 @@ import java.io.*;
 /**
  * @author Boris Grozev
  */
-class ColibriWebSocketServlet
+public class ColibriWebSocketServlet
     extends WebSocketServlet
 {
     /**
@@ -43,7 +43,7 @@ class ColibriWebSocketServlet
      * Initializes a new {@link ColibriWebSocketServlet} instance.
      * @param service the {@link ColibriWebSocketService} to be used
      */
-    ColibriWebSocketServlet(ColibriWebSocketService service)
+    public ColibriWebSocketServlet(ColibriWebSocketService service)
     {
         this.service = service;
     }

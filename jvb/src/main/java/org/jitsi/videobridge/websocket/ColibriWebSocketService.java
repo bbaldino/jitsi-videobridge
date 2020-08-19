@@ -116,24 +116,24 @@ public class ColibriWebSocketService
     }
 
     /**
-     * Initializes a {@link ColibriWebSocketServlet} and adds it to the
-     * specified {@link ServletContextHandler}.
+     * Registers the {@link ColibriWebSocketServlet} in the given
+     * {@link ServletContextHandler}
      *
      * @param servletContextHandler the {@code ServletContextHandler} to add the
-     * new instance to
-     * @return the {@link ServletHolder} which holds the newly initialized
-     * servlet, or {@code null} if no servlet was initialized.
+     *                              {@link ColibriWebSocketServlet} to
      */
-    ServletHolder initializeColibriWebSocketServlet(
-        ServletContextHandler servletContextHandler)
+    public void registerServlet(ServletContextHandler servletContextHandler)
     {
-        ServletHolder holder = null;
-
+        if (servletContextHandler == null)
+        {
+            logger.error("Can't register, ServletContextHandler is null");
+            return;
+        }
         if (baseUrl != null && config.getEnabled())
         {
             logger.info("Starting colibri websocket service with baseUrl: "
                 + baseUrl);
-            holder = new ServletHolder();
+            ServletHolder holder = new ServletHolder();
 
             holder.setServlet(new ColibriWebSocketServlet(this));
 
@@ -143,7 +143,5 @@ public class ColibriWebSocketService
                 holder,
                 COLIBRI_WS_PATH + "*");
         }
-
-        return holder;
     }
 }

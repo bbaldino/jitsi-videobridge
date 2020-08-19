@@ -16,10 +16,13 @@
 package org.jitsi.videobridge;
 
 import kotlin.jvm.functions.*;
+import org.eclipse.jetty.server.*;
+import org.eclipse.jetty.servlet.*;
 import org.jetbrains.annotations.*;
 import org.jitsi.cmd.*;
 import org.jitsi.meet.*;
 import org.jitsi.metaconfig.*;
+import org.jitsi.rest.*;
 import org.jitsi.utils.logging2.*;
 import org.jitsi.videobridge.health.*;
 import org.jitsi.videobridge.octo.*;
@@ -108,8 +111,33 @@ public class Main
         }
         HealthCheckServiceSupplierKt.singleton.get().start();
 
-        WebSocketJettyService websocketJettyService = new WebSocketJettyService();
-        websocketJettyService.start();
+        JettyBundleActivatorConfig publicServerConfig = new JettyBundleActivatorConfig(
+            "",
+            "videobridge.http-servers.public"
+        );
+        Server publicServer;
+        if (publicServerConfig.getKeyStorePath() != null)
+        {
+            publicServer = JettyKt.createSecureJettyServer(
+                publicServerConfig.getTlsPort(),
+                publicServerConfig.getHost(),
+                publicServerConfig.getKeyStorePath(),
+                publicServerConfig.getKeyStorePassword(),
+                publicServerConfig.getNeedClientAuth()
+            );
+        }
+        else
+        {
+            publicServer = JettyKt.createJettyServer(
+                publicServerConfig.getPort(),
+                publicServerConfig.getHost()
+            );
+        }
+
+        ColibriWebSocketService colibriWebSocketService = new ColibriWebSocketService(publicServerConfig.getKeyStorePath() != null);
+        ColibriWebSocketServiceSupplier.singleton.setColibriWebsocketService(colibriWebSocketService);
+        colibriWebSocketService.registerServlet(JettyKt.getServletContextHandler(publicServer));
+        publicServer.start();
 
         Logger logger = new LoggerImpl("org.jitsi.videobridge.Main");
 
@@ -129,7 +157,13 @@ public class Main
 
             HealthCheckServiceSupplierKt.singleton.get().stop();
 
-            websocketJettyService.stop();
+            try
+            {
+                publicServer.stop();
+            } catch (Exception e)
+            {
+                e.printStackTrace();
+            }
         }));
 
         ComponentMain main = new ComponentMain();
