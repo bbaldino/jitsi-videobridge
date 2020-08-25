@@ -16,6 +16,7 @@
 package org.jitsi.videobridge;
 
 import edu.umd.cs.findbugs.annotations.*;
+import kotlin.*;
 import org.jetbrains.annotations.*;
 import org.jetbrains.annotations.Nullable;
 import org.jitsi.eventadmin.*;
@@ -180,6 +181,8 @@ public class Conference
     private ScheduledFuture<?> updateLastNEndpointsFuture;
 
     private final EndpointConnectionStatusMonitor epConnectionStatusMonitor;
+
+    private final EventEmitter<EventHandler> emitter = new EventEmitter<>();
 
     /**
      * Initializes a new <tt>Conference</tt> instance which is to represent a
@@ -672,11 +675,10 @@ public class Conference
 
         addEndpoint(endpoint);
 
-        EventAdmin eventAdmin = getEventAdmin();
-        if (eventAdmin != null)
-        {
-            eventAdmin.sendEvent(EventFactory.endpointCreated(endpoint));
-        }
+        emitter.fireEvent(handler -> {
+            handler.localEndpointCreated(endpoint);
+            return Unit.INSTANCE;
+        });
 
         return endpoint;
     }
@@ -856,10 +858,12 @@ public class Conference
         if (removedEndpoint != null)
         {
             epConnectionStatusMonitor.endpointExpired(removedEndpoint.getID());
-            final EventAdmin eventAdmin = getEventAdmin();
-            if (eventAdmin != null)
+            if (removedEndpoint instanceof Endpoint)
             {
-                eventAdmin.sendEvent(EventFactory.endpointExpired(removedEndpoint));
+                emitter.fireEvent(handler -> {
+                    handler.localEndpointExpire((Endpoint)removedEndpoint);
+                    return Unit.INSTANCE;
+                });
             }
             endpointsChanged();
         }
@@ -1316,5 +1320,10 @@ public class Conference
         {
             Conference.this.lastNEndpointsChanged();
         }
+    }
+
+    static interface EventHandler {
+        void localEndpointCreated(Endpoint endpoint);
+        void localEndpointExpire(Endpoint endpoint);
     }
 }
