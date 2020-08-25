@@ -951,7 +951,7 @@ public class Conference
      *
      * @return the <tt>EventAdmin</tt> instance used by this <tt>Conference</tt>
      */
-    public EventAdmin getEventAdmin()
+    private EventAdmin getEventAdmin()
     {
         return eventAdmin;
     }
