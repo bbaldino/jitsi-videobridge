@@ -18,6 +18,7 @@ package org.jitsi.videobridge
 
 import io.kotest.core.spec.IsolationMode
 import io.kotest.core.spec.style.ShouldSpec
+import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
 
@@ -27,7 +28,6 @@ class VideobridgeTest : ShouldSpec({
     val videobridge = Videobridge()
 
     context("when an event handler is added") {
-        println("a")
         val createdConfs = mutableListOf<Conference>()
         val expiredConfs = mutableListOf<Conference>()
         val handler = object : Videobridge.EventHandler {
@@ -39,22 +39,27 @@ class VideobridgeTest : ShouldSpec({
                 expiredConfs += conference
             }
         }
-        videobridge.addHandler(handler)
+        videobridge.addEventHandler(handler)
         context("and a conference is created") {
-            println("b")
             videobridge.createConference("conf_name", true)
             should("fire an event") {
-                println("c")
                 createdConfs shouldHaveSize 1
                 createdConfs.first().name shouldBe "conf_name"
             }
             context("and then expired") {
-                println("d")
                 videobridge.expireConference(createdConfs.first())
                 should("fire an event") {
-                    println("e")
                     expiredConfs shouldHaveSize 1
                     expiredConfs.first().name shouldBe "conf_name"
+                }
+            }
+        }
+        context("and then removed") {
+            videobridge.removeEventHandler(handler)
+            context("and a conference is created") {
+                videobridge.createConference("new_conf_name", true)
+                should("not notify the removed handler") {
+                    createdConfs.shouldBeEmpty()
                 }
             }
         }

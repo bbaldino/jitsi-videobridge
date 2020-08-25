@@ -143,7 +143,7 @@ public class Videobridge
      */
     private final VideobridgeShim shim = new VideobridgeShim(this);
 
-    private final EventEmitter<EventHandler> emitter = new EventEmitter<>();
+    public final EventEmitter<EventHandler> emitter = new EventEmitter<>();
 
     static
     {
@@ -812,12 +812,12 @@ public class Videobridge
         return JvbVersionServiceSupplierKt.singleton().get().getCurrentVersion();
     }
 
-    public void addHandler(EventHandler handler)
+    public void addEventHandler(EventHandler handler)
     {
         emitter.addHandler(handler);
     }
 
-    public void removeHandler(EventHandler handler)
+    public void removeEventHandler(EventHandler handler)
     {
         emitter.removeHandler(handler);
     }
