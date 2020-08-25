@@ -143,6 +143,8 @@ public class Videobridge
      */
     private final VideobridgeShim shim = new VideobridgeShim(this);
 
+    private final EventEmitter<EventHandler> emitter = new EventEmitter<>();
+
     static
     {
         org.jitsi.rtp.util.BufferPool.Companion.setGetArray(ByteBufferPool::getBuffer);
@@ -255,6 +257,12 @@ public class Videobridge
                 + " gid=" + conference.getGid()
                 + " logging=" + enableLogging);
 
+        // TODO: do we need to not fire these events if enableLogging = false?
+        emitter.fireEvent(handler -> {
+            handler.conferenceCreated(conference);
+            return Unit.INSTANCE;
+        });
+
         return conference;
     }
 
@@ -302,6 +310,10 @@ public class Videobridge
         {
             conference.expire();
         }
+        emitter.fireEvent(handler -> {
+            handler.conferenceExpired(conference);
+            return Unit.INSTANCE;
+        });
 
         // Check if it's the time to shutdown now
         maybeDoShutdown();
@@ -800,6 +812,16 @@ public class Videobridge
         return JvbVersionServiceSupplierKt.singleton().get().getCurrentVersion();
     }
 
+    public void addHandler(EventHandler handler)
+    {
+        emitter.addHandler(handler);
+    }
+
+    public void removeHandler(EventHandler handler)
+    {
+        emitter.removeHandler(handler);
+    }
+
     /**
      * Basic statistics/metrics about the videobridge like cumulative/total
      * number of channels created, cumulative/total number of channels failed,
@@ -956,5 +978,11 @@ public class Videobridge
          * wasn't (at the time of expiration).
          */
         public AtomicInteger dtlsFailedEndpoints = new AtomicInteger();
+    }
+
+    public static interface EventHandler {
+        void conferenceCreated(Conference conference);
+
+        void conferenceExpired(Conference conference);
     }
 }

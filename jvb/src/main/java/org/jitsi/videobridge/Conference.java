@@ -241,7 +241,10 @@ public class Conference
 
         if (enableLogging)
         {
-            eventAdmin.sendEvent(EventFactory.conferenceCreated(this));
+            if (eventAdmin != null)
+            {
+                eventAdmin.sendEvent(EventFactory.conferenceCreated(this));
+            }
             Videobridge.Statistics videobridgeStatistics = videobridge.getStatistics();
             videobridgeStatistics.totalConferencesCreated.incrementAndGet();
         }
