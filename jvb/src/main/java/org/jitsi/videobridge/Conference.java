@@ -15,20 +15,17 @@
  */
 package org.jitsi.videobridge;
 
-import edu.umd.cs.findbugs.annotations.*;
 import kotlin.*;
 import org.jetbrains.annotations.*;
-import org.jetbrains.annotations.Nullable;
-import org.jitsi.eventadmin.*;
 import org.jitsi.nlj.*;
 import org.jitsi.rtp.*;
 import org.jitsi.rtp.rtcp.rtcpfb.payload_specific_fb.*;
 import org.jitsi.rtp.rtp.*;
 import org.jitsi.utils.collections.*;
-import org.jitsi.utils.logging.DiagnosticContext;
-import org.jitsi.utils.logging2.*;
+import org.jitsi.utils.logging.*;
 import org.jitsi.utils.logging2.Logger;
 import org.jitsi.utils.logging2.LoggerImpl;
+import org.jitsi.utils.logging2.*;
 import org.jitsi.videobridge.message.*;
 import org.jitsi.videobridge.octo.*;
 import org.jitsi.videobridge.shim.*;
@@ -40,15 +37,13 @@ import org.jxmpp.stringprep.*;
 import org.osgi.framework.*;
 
 import java.io.*;
-import java.lang.*;
-import java.lang.SuppressWarnings;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
 import java.util.logging.*;
 import java.util.stream.*;
 
-import static org.jitsi.utils.collections.JMap.entry;
+import static org.jitsi.utils.collections.JMap.*;
 
 /**
  * Represents a conference in the terms of Jitsi Videobridge.
@@ -84,13 +79,6 @@ public class Conference
     private List<Endpoint> endpointsCache = Collections.emptyList();
 
     private final Object endpointsCacheLock = new Object();
-
-    /**
-     * The {@link EventAdmin} instance (to be) used by this {@code Conference}
-     * and all instances (of {@code Content}, {@code Channel}, etc.) created by
-     * it.
-     */
-    private final EventAdmin eventAdmin;
 
     /**
      * The indicator which determines whether {@link #expire()} has been called
@@ -222,7 +210,6 @@ public class Conference
         this.shim = new ConferenceShim(this, logger);
         this.id = Objects.requireNonNull(id, "id");
         this.gid = gid;
-        this.eventAdmin = enableLogging ? videobridge.getEventAdmin() : null;
         this.includeInStatistics = enableLogging;
         this.conferenceName = conferenceName;
 
@@ -906,12 +893,6 @@ public class Conference
     @Override
     public void endpointMessageTransportConnected(@NotNull AbstractEndpoint endpoint)
     {
-        EventAdmin eventAdmin = getEventAdmin();
-
-        if (eventAdmin != null)
-        {
-            eventAdmin.postEvent(EventFactory.endpointMessageTransportReady(endpoint));
-        }
         epConnectionStatusMonitor.endpointConnected(endpoint.getID());
 
         if (!isExpired())
@@ -942,18 +923,6 @@ public class Conference
     public String getName()
     {
         return conferenceName;
-    }
-
-    /**
-     * Returns the <tt>EventAdmin</tt> instance used by this <tt>Conference</tt>
-     * and all instances (of {@code Content}, {@code Channel}, etc.) created by
-     * it.
-     *
-     * @return the <tt>EventAdmin</tt> instance used by this <tt>Conference</tt>
-     */
-    private EventAdmin getEventAdmin()
-    {
-        return eventAdmin;
     }
 
     /**
