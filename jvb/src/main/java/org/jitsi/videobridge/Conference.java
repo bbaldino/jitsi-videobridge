@@ -241,10 +241,6 @@ public class Conference
 
         if (enableLogging)
         {
-            if (eventAdmin != null)
-            {
-                eventAdmin.sendEvent(EventFactory.conferenceCreated(this));
-            }
             Videobridge.Statistics videobridgeStatistics = videobridge.getStatistics();
             videobridgeStatistics.totalConferencesCreated.incrementAndGet();
         }
@@ -538,12 +534,6 @@ public class Conference
         {
             updateLastNEndpointsFuture.cancel(true);
             updateLastNEndpointsFuture = null;
-        }
-
-        EventAdmin eventAdmin = getEventAdmin();
-        if (eventAdmin != null)
-        {
-            eventAdmin.sendEvent(EventFactory.conferenceExpired(this));
         }
 
         logger.debug(() -> "Expiring endpoints.");
