@@ -401,27 +401,6 @@ public class Videobridge
     }
 
     /**
-     * Returns the <tt>EventAdmin</tt> instance (to be) used by this
-     * <tt>Videobridge</tt>.
-     *
-     * @return the <tt>EventAdmin</tt> instance (to be) used by this
-     * <tt>Videobridge</tt>.
-     */
-    public EventAdmin getEventAdmin()
-    {
-        BundleContext bundleContext = getBundleContext();
-
-        if (bundleContext == null)
-        {
-            return null;
-        }
-        else
-        {
-            return ServiceUtils2.getService(bundleContext, EventAdmin.class);
-        }
-    }
-
-    /**
      * Handles a <tt>ColibriConferenceIQ</tt> stanza which represents a request.
      *
      * @param conferenceIQ the <tt>ColibriConferenceIQ</tt> stanza represents
