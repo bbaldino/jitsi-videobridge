@@ -848,7 +848,7 @@ public class Conference
             if (removedEndpoint instanceof Endpoint)
             {
                 emitter.fireEvent(handler -> {
-                    handler.localEndpointExpire((Endpoint)removedEndpoint);
+                    handler.localEndpointExpired((Endpoint)removedEndpoint);
                     return Unit.INSTANCE;
                 });
             }
@@ -1293,6 +1293,6 @@ public class Conference
 
     static interface EventHandler {
         void localEndpointCreated(Endpoint endpoint);
-        void localEndpointExpire(Endpoint endpoint);
+        void localEndpointExpired(Endpoint endpoint);
     }
 }
